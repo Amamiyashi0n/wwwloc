@@ -151,3 +151,99 @@ test('「安装根证书」产出的描述文件只含根证书, 不含代理配
   assert.ok(!xml.includes('ProxyServer'), '不应含代理服务器配置');
   assert.ok(xml.includes('<data>' + CA_CERT_B64 + '</data>'), '应嵌入本站证书');
 });
+
+// 在假 DOM 里跑「进阶」的含代理生成器, 取出产出的描述文件
+async function runBuildProfile({ host, port, ssidList }) {
+  const html = await (await app.request('/')).text();
+  const start = html.lastIndexOf('/* ---- 免客户端模式');
+  const end = html.indexOf('function pfOnCaFile');
+  const code = html.slice(start, end);
+  let downloaded = null;
+  const els = {
+    pfCa: { value: CA_CERT_B64, addEventListener() {} },
+    pfHost: { value: host, addEventListener() {} },
+    pfPort: { value: port, addEventListener() {} },
+    pfSsidList: { value: ssidList, addEventListener() {} },
+  };
+  const sandbox = {
+    document: {
+      getElementById: (id) => els[id] ?? { value: '', addEventListener() {} },
+      createElement: () => ({ href: '', download: '', click() {}, remove() {} }),
+      body: { appendChild() {} },
+    },
+    crypto: globalThis.crypto,
+    Blob: globalThis.Blob,
+    URL: { createObjectURL: (b) => { downloaded = b; return 'blob:x'; } },
+    toast: () => {},
+    atob: (s) => Buffer.from(s, 'base64').toString('binary'),
+    btoa: (s) => Buffer.from(s, 'binary').toString('base64'),
+    Uint8Array, String, Math, parseInt,
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(code, sandbox);
+  sandbox.buildProfile();
+  assert.ok(downloaded, 'buildProfile 应产出描述文件');
+  return await downloaded.text();
+}
+
+test('含代理的描述文件: 一次写多个 Wi-Fi, 每个都有独立 UUID 与代理指向', async () => {
+  const xml = await runBuildProfile({
+    host: '192.168.1.100',
+    port: '8888',
+    ssidList: '家里WiFi\n公司WiFi | 密码123\n\n  \n咖啡馆',
+  });
+  const wifiPayloads = [...xml.matchAll(/<string>com\.apple\.wifi\.managed<\/string>/g)];
+  assert.equal(wifiPayloads.length, 3, '空行应被忽略, 三个 Wi-Fi 应生成三个 payload');
+  for (const ssid of ['家里WiFi', '公司WiFi', '咖啡馆']) {
+    assert.ok(xml.includes(`<string>${ssid}</string>`), `应含 ${ssid}`);
+  }
+  // 只有第二个带 " | 密码"
+  assert.equal((xml.match(/<key>Password<\/key>/g) || []).length, 1, '只有写了密码的那个才带 Password');
+  assert.ok(xml.includes('<string>密码123</string>'), '密码应按 | 分隔填入');
+
+  // 根证书 1 个 + Wi-Fi 3 个 + 顶层 1 个 = 5 个 UUID, 且互不相同
+  const uuids = [...xml.matchAll(/<key>PayloadUUID<\/key><string>([^<]+)<\/string>/g)].map((m) => m[1]);
+  assert.equal(uuids.length, 5);
+  assert.equal(new Set(uuids).size, 5, '所有 PayloadUUID 必须唯一');
+
+  assert.equal((xml.match(/<string>Manual<\/string>/g) || []).length, 3, '每个 Wi-Fi 都应有 Manual 代理');
+  assert.equal((xml.match(/<string>192\.168\.1\.100<\/string>/g) || []).length, 3, '每个 Wi-Fi 的代理都应指向该地址');
+});
+
+test('含代理的描述文件: 电脑地址可填主机名——IP 变了手机端无需改动', async () => {
+  const xml = await runBuildProfile({ host: 'my-pc.lan', port: '8888', ssidList: '家里WiFi' });
+  assert.ok(xml.includes('<string>my-pc.lan</string>'), '主机名应原样写入代理服务器字段');
+  assert.ok(!xml.includes('ProxyPACURL'), '不应使用 PAC(全局代理 payload 需要监管设备)');
+});
+
+test('含代理的描述文件: 缺 Wi-Fi 名称或地址时不产出文件', async () => {
+  const html = await (await app.request('/')).text();
+  const start = html.lastIndexOf('/* ---- 免客户端模式');
+  const code = html.slice(start, html.indexOf('function pfOnCaFile'));
+  for (const [host, list] of [['192.168.1.100', ''], ['', '家里WiFi']]) {
+    let downloaded = null;
+    const els = {
+      pfCa: { value: CA_CERT_B64, addEventListener() {} },
+      pfHost: { value: host, addEventListener() {} },
+      pfPort: { value: '8888', addEventListener() {} },
+      pfSsidList: { value: list, addEventListener() {} },
+    };
+    const sandbox = {
+      document: {
+        getElementById: (id) => els[id] ?? { value: '', addEventListener() {} },
+        createElement: () => ({ href: '', download: '', click() {}, remove() {} }),
+        body: { appendChild() {} },
+      },
+      crypto: globalThis.crypto, Blob: globalThis.Blob,
+      URL: { createObjectURL: (b) => { downloaded = b; return 'blob:x'; } },
+      toast: () => {},
+      atob: (s) => Buffer.from(s, 'base64').toString('binary'),
+      btoa: (s) => Buffer.from(s, 'binary').toString('base64'),
+      Uint8Array, String, Math, parseInt,
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(code, sandbox);
+    sandbox.buildProfile();
+    assert.equal(downloaded, null, `host=${host} list=${list} 时不应产出文件`);
+  }
+});

@@ -91,8 +91,7 @@ test("生成器: 描述文件结构完整、CA 为可解析的 DER 证书", asyn
   const { blob } = runGenerator({
     pfHost: "192.168.1.100",
     pfPort: "8888",
-    pfSsid: "MyWiFi",
-    pfWifiPass: "secret123",
+    pfSsidList: "MyWiFi | secret123",
     pfCa: CA_PEM,
   });
   assert.equal(blob.type, "application/x-apple-aspen-config");
@@ -133,8 +132,7 @@ test("生成器: 不填 Wi-Fi 密码时不写 Password 键; 缺必填项则不�
   const { blob } = runGenerator({
     pfHost: "10.0.0.5",
     pfPort: "",
-    pfSsid: "NoPass",
-    pfWifiPass: "",
+    pfSsidList: "NoPass",
     pfCa: CA_PEM.replace(/\s+/g, "\n"), // 带换行的 PEM 也应正确处理
   });
   const xml = await blobText(blob);
@@ -151,8 +149,7 @@ test("生成器: 缺少 Wi-Fi 名称时不产出可下载文件", () => {
   const els = {
     pfHost: { value: "192.168.1.1", addEventListener() {} },
     pfPort: { value: "8888", addEventListener() {} },
-    pfSsid: { value: "", addEventListener() {} },
-    pfWifiPass: { value: "", addEventListener() {} },
+    pfSsidList: { value: "", addEventListener() {} },
     pfCa: { value: CA_PEM, addEventListener() {} },
     toast: { value: "", addEventListener() {} },
   };

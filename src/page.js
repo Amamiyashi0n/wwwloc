@@ -546,30 +546,43 @@ function installCertOnly() {
   toast('已下载, 去 设置 → 通用 → VPN与设备管理 安装');
 }
 
-// 进阶: 描述文件同时带 Wi-Fi 代理配置, 免去手动设置(需填电脑 IP 与 Wi-Fi 名)
+// 进阶: 描述文件同时带 Wi-Fi 代理配置, 免去手动设置(需填电脑地址与 Wi-Fi 名)
+// 支持一次写多个 Wi-Fi(每行一个, 可用 "SSID | 密码"), 装一次覆盖所有常去网络。
 function buildProfile() {
   var host = document.getElementById('pfHost').value.trim();
   var port = parseInt(document.getElementById('pfPort').value, 10) || 8888;
-  var ssid = document.getElementById('pfSsid').value.trim();
-  var wifiPass = document.getElementById('pfWifiPass').value;
   var ca = pfCurrentCa();
-  if (!host || !ssid || !ca) { toast('请先填写电脑 IP、Wi-Fi 名称, 并载入证书'); return; }
+  if (!host || !ca) { toast('请先填写电脑地址, 并载入证书'); return; }
+  var lines = document.getElementById('pfSsidList').value.split(String.fromCharCode(10));
+  var nets = [];
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line) continue;
+    var parts = line.split('|');
+    var ssid = parts[0].trim();
+    if (ssid) nets.push({ ssid: ssid, pass: parts.length > 1 ? parts.slice(1).join('|').trim() : '' });
+  }
+  if (!nets.length) { toast('请至少填写一个 Wi-Fi 名称'); return; }
   try { atob(ca); } catch (e) { toast('CA 证书内容不是有效的 base64/PEM'); return; }
-  var wifi = '<dict>' + PF_NL +
-    '<key>PayloadType</key><string>com.apple.wifi.managed</string>' + PF_NL +
-    '<key>PayloadVersion</key><integer>1</integer>' + PF_NL +
-    '<key>PayloadIdentifier</key><string>com.selfhost.wloc.wifi</string>' + PF_NL +
-    '<key>PayloadUUID</key><string>' + pfUuid() + '</string>' + PF_NL +
-    '<key>PayloadDisplayName</key><string>WLOC Wi-Fi (' + pfEsc(ssid) + ')</string>' + PF_NL +
-    '<key>HIDDEN_NETWORK</key><false/>' + PF_NL + '<key>AutoJoin</key><true/>' + PF_NL +
-    '<key>SSID_STR</key><string>' + pfEsc(ssid) + '</string>' + PF_NL +
-    (wifiPass ? '<key>Password</key><string>' + pfEsc(wifiPass) + '</string>' + PF_NL : '') +
-    '<key>ProxyType</key><string>Manual</string>' + PF_NL +
-    '<key>ProxyServer</key><string>' + pfEsc(host) + '</string>' + PF_NL +
-    '<key>ProxyPort</key><integer>' + port + '</integer>' + PF_NL +
-    '</dict>';
-  pfDownload(pfPlist([pfCaPayload(ca), wifi]), 'wloc.mobileconfig');
-  toast('已生成(含代理配置), 请在 Safari 下载记录中安装');
+  var payloads = [pfCaPayload(ca)];
+  for (var j = 0; j < nets.length; j++) {
+    var net = nets[j];
+    payloads.push('<dict>' + PF_NL +
+      '<key>PayloadType</key><string>com.apple.wifi.managed</string>' + PF_NL +
+      '<key>PayloadVersion</key><integer>1</integer>' + PF_NL +
+      '<key>PayloadIdentifier</key><string>com.selfhost.wloc.wifi.' + j + '</string>' + PF_NL +
+      '<key>PayloadUUID</key><string>' + pfUuid() + '</string>' + PF_NL +
+      '<key>PayloadDisplayName</key><string>WLOC Wi-Fi (' + pfEsc(net.ssid) + ')</string>' + PF_NL +
+      '<key>HIDDEN_NETWORK</key><false/>' + PF_NL + '<key>AutoJoin</key><true/>' + PF_NL +
+      '<key>SSID_STR</key><string>' + pfEsc(net.ssid) + '</string>' + PF_NL +
+      (net.pass ? '<key>Password</key><string>' + pfEsc(net.pass) + '</string>' + PF_NL : '') +
+      '<key>ProxyType</key><string>Manual</string>' + PF_NL +
+      '<key>ProxyServer</key><string>' + pfEsc(host) + '</string>' + PF_NL +
+      '<key>ProxyPort</key><integer>' + port + '</integer>' + PF_NL +
+      '</dict>');
+  }
+  pfDownload(pfPlist(payloads), 'wloc.mobileconfig');
+  toast('已生成(' + nets.length + ' 个 Wi-Fi + 证书), 请在 Safari 下载记录中安装');
 }
 function pfOnCaFile(e) {
   var f = e.target.files[0]; if (!f) return;
@@ -672,12 +685,15 @@ queryActive();
     </p>
 
     <details style="margin-top:10px">
-      <summary style="font-size:13px;cursor:pointer;color:var(--blue)">进阶：让描述文件自动配置代理（免去手动填一步）</summary>
-      <p style="font-size:11px;color:var(--gray);margin:6px 0">填电脑 IP 与 Wi-Fi 名，生成的描述文件会连带把该 Wi-Fi 的代理指向电脑 —— 上面第 3 步就不用做了。注意：电脑 IP 变了要重新生成。</p>
-      <div class="input-row" style="margin-top:8px"><input id="pfHost" placeholder="电脑局域网 IP，如 192.168.1.100" /></div>
+      <summary style="font-size:13px;cursor:pointer;color:var(--blue)">进阶：让描述文件自动配置代理（可一次写多个 Wi-Fi）</summary>
+      <p style="font-size:11px;color:var(--gray);margin:6px 0">
+        填电脑地址与 Wi-Fi 名，描述文件会把这些 Wi-Fi 的代理一并指向电脑 —— 上面第 3 步就不用做了。
+        <b>这里可以一次写多个 Wi-Fi（每行一个，带密码写成 <code>SSID | 密码</code>）</b>，装一次就够了，以后换网络不用重装。
+        电脑地址建议填**主机名**（或 Cloudflare DNS 里指向内网 IP 的域名）而不是 IP —— 这样电脑 IP 变了也不用重新生成。
+      </p>
+      <div class="input-row" style="margin-top:8px"><input id="pfHost" placeholder="电脑地址：主机名（推荐）或局域网 IP，如 MYPC 或 192.168.1.100" /></div>
       <div class="input-row"><input id="pfPort" type="number" value="8888" placeholder="代理端口（默认 8888）" /></div>
-      <div class="input-row"><input id="pfSsid" placeholder="Wi-Fi 名称（SSID）" /></div>
-      <div class="input-row"><input id="pfWifiPass" placeholder="Wi-Fi 密码（可空，填了会写入描述文件）" /></div>
+      <textarea id="pfSsidList" placeholder="Wi-Fi 名称，每行一个&#10;家里WiFi&#10;公司WiFi | 密码123" style="width:100%;height:76px;margin-top:8px;font-family:'SF Mono',monospace;font-size:12px;border:1px solid #d1d1d6;border-radius:8px;padding:8px"></textarea>
       <div class="row"><button class="btn btn-secondary" onclick="buildProfile()">生成含代理的描述文件</button></div>
     </details>
 
