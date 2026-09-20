@@ -1,0 +1,61 @@
+name: Deploy
+
+# 推送到 main 即自动部署到 Cloudflare Workers —— 不需要手动点击。
+# 需要在仓库 Settings → Secrets and variables → Actions 里配置:
+#   CLOUDFLARE_API_TOKEN   (权限: Workers Scripts:Edit + Account Settings:Read)
+#   CLOUDFLARE_ACCOUNT_ID  (控制台 Workers 概览页右侧的 Account ID)
+# 未配置这两个 secret 时, 本工作流只做校验并跳过部署(不会报红)。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # 连续推送时取消排队中的旧任务, 保证最后推送的内容最终生效
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # 部署前的门禁: 生成物一致性 + 上游完整性 + 页面/路由/解析/描述文件生成器测试
+      - run: npm run check
+      - run: npm test
+
+      - name: 检查部署凭据
+        id: creds
+        run: |
+          if [ -n "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] && [ -n "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::未配置 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID, 本次跳过自动部署。配置后推送即自动上线。"
+          fi
+
+      - name: 部署到 Cloudflare Workers
+        if: steps.creds.outputs.ready == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --minify
+
+      - name: 部署结果
+        if: steps.creds.outputs.ready == 'true'
+        run: |
+          echo "已部署 Worker: wwwloc-page" >> "$GITHUB_STEP_SUMMARY"
+          echo "站点: https://wwwloc-page.<你的子域>.workers.dev/" >> "$GITHUB_STEP_SUMMARY"

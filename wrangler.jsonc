@@ -1,8 +1,13 @@
 {
-  "name": "wloc-page",
+  // 必须与线上已存在的 Worker 同名, 否则自动部署会另建一个 Worker、旧域名不再更新。
+  // 线上地址: https://wwwloc-page.amamiyashion.workers.dev
+  "name": "wwwloc-page",
   "main": "src/index.js",
   // 只用 fetch/URL/TextDecoder 等标准 Web API, 不需要 nodejs_compat。
   "compatibility_date": "2026-08-05",
+  // 默认开启 workers.dev 域名(等价于控制台里的「启用 workers.dev 子域」)。
+  // 之后若绑定了自定义域, 可改为 false 只走自定义域。
+  "workers_dev": true,
   // 关闭持久化日志采集, 与「/api/parse 不记日志」的说法对齐; 调试用 wrangler tail。
   "observability": { "enabled": false }
 }

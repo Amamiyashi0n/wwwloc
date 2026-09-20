@@ -69,19 +69,30 @@ flowchart LR
 
 ## 部署
 
-**方式 A:一键部署(推荐)** —— 点顶部「Deploy to Cloudflare」按钮,授权后即完成。页面与模块地址由 Worker 按请求域名动态生成,无需配置。
+**方式 A:一键部署** —— 点顶部「Deploy to Cloudflare」按钮,授权后即完成。注意:这是**一次性**部署,之后仓库更新不会自动上线;要自动,见下面的「推送到 main 即自动部署」。
 
-**方式 B:本地部署**(需要 Node ≥ 22):
+**方式 B:自动部署(推荐)** —— 推送到 `main` 就自动上线,不用每次点。仓库已内置 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml),你只需在 GitHub 仓库 Settings → Secrets and variables → Actions 添加两个 secret(一次性):
+
+| Secret | 取值 |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare 控制台 → My Profile → API Tokens → Create Token → 模板 **Edit Cloudflare Workers**,或自定义权限 `Workers Scripts:Edit` + `Account Settings:Read` |
+| `CLOUDFLARE_ACCOUNT_ID` | 控制台 Workers 概览页右侧的 Account ID |
+
+配好后每次 `git push`(推到 main)会自动:装依赖 → 校验生成物与上游完整性 → 跑全部测试 → `wrangler deploy --minify`。**校验不通过就不会部署**。未配置 secret 时工作流只做校验并给一条警告,不会报红。
+
+> [!NOTE]
+> 也可以在 Cloudflare 控制台用 **Workers Builds** 的 Git 连接实现同样的效果(不需要 GitHub secret)。两条路径**选一条即可**,同时开启会导致同一提交被部署两次。
+
+**方式 C:本地部署**(需要 Node ≥ 22):
 
 ```sh
 npm ci
 npx wrangler login
-npm run deploy          # 先部署,拿到 workers.dev 地址
-npm run configure       # 可选:把真实地址写进 docs/USAGE.md 与 modules/
-npm run check:release
-npm test
-npm run deploy
+npm run deploy          # 部署到 wwwloc-page(名字见 wrangler.jsonc)
 ```
+
+> [!IMPORTANT]
+> `wrangler.jsonc` 里的 `name` 必须与你已存在的 Worker 同名(当前为 `wwwloc-page`)。改了名字会**另建一个 Worker**,旧域名不再更新。`workers_dev: true` 表示默认开启 `*.workers.dev` 域名;若绑定了自定义域,可改为 `false` 只走自定义域。
 
 部署后同一域名下提供:
 

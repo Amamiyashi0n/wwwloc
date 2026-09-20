@@ -1,9 +1,13 @@
 name: Validate
+
+# main 分支的推送由 deploy.yml 一并校验并部署, 这里只覆盖 PR 与手动触发, 避免重复执行。
 on:
-  push:
   pull_request:
+  workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
