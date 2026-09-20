@@ -1,4 +1,7 @@
 {
   "site": "https://wwwloc-page.amamiyashion.workers.dev",
-  "repository": "Amamiyashi0n/wwwloc"
+  "repository": "Amamiyashi0n/wwwloc",
+  "//engineHost": "你电脑在局域网里的地址:填主机名(推荐,IP 变了不用改)或固定 IP,如 my-pc.lan 或 192.168.1.100",
+  "engineHost": "",
+  "enginePort": 8888
 }

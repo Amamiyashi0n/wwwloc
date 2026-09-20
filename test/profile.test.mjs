@@ -52,6 +52,7 @@ function runGenerator(values) {
       body: { appendChild() {} },
     },
     crypto: globalThis.crypto,
+    window: { location: { origin: "https://example.test" } },
     Blob: globalThis.Blob,
     URL: { createObjectURL: (blob) => { downloaded = blob; return "blob:test"; } },
     toast: (msg) => { sandbox.__toast = msg; },
@@ -89,8 +90,6 @@ function checkTagBalance(xml) {
 
 test("生成器: 描述文件结构完整、CA 为可解析的 DER 证书", async () => {
   const { blob } = runGenerator({
-    pfHost: "192.168.1.100",
-    pfPort: "8888",
     pfSsidList: "MyWiFi | secret123",
     pfCa: CA_PEM,
   });
@@ -111,9 +110,10 @@ test("生成器: 描述文件结构完整、CA 为可解析的 DER 证书", asyn
   // 输入值按预期写入
   assert.ok(xml.includes("<string>MyWiFi</string>"), "SSID 应写入");
   assert.ok(xml.includes("<string>secret123</string>"), "Wi-Fi 密码应写入");
-  assert.ok(xml.includes("<string>192.168.1.100</string>"), "代理地址应写入");
-  assert.ok(xml.includes("<integer>8888</integer>"), "代理端口应写入");
-  assert.ok(xml.includes("<string>Manual</string>"), "代理类型应为 Manual");
+  assert.ok(xml.includes("<string>Auto</string>"), "代理类型应为 Auto(PAC)");
+  assert.ok(xml.includes("<key>ProxyPACURL</key>"), "应带 PAC 网址");
+  assert.ok(xml.includes("https://example.test/wloc.pac"), "PAC 网址应取当前站点");
+  assert.ok(!xml.includes("ProxyServer"), "不应写死代理地址");
 
   // UUID 应各不相同: 根证书 payload + Wi-Fi payload + 顶层配置 = 3 个
   const uuids = [...xml.matchAll(/<key>PayloadUUID<\/key><string>([^<]+)<\/string>/g)].map((m) => m[1]);
@@ -130,14 +130,11 @@ test("生成器: 描述文件结构完整、CA 为可解析的 DER 证书", asyn
 
 test("生成器: 不填 Wi-Fi 密码时不写 Password 键; 缺必填项则不出文件", async () => {
   const { blob } = runGenerator({
-    pfHost: "10.0.0.5",
-    pfPort: "",
     pfSsidList: "NoPass",
     pfCa: CA_PEM.replace(/\s+/g, "\n"), // 带换行的 PEM 也应正确处理
   });
   const xml = await blobText(blob);
   assert.ok(!xml.includes("<key>Password</key>"), "空密码不应写入 Password 键");
-  assert.ok(xml.includes("<integer>8888</integer>"), "端口留空应回落默认 8888");
   assert.ok(xml.includes("<string>NoPass</string>"));
   checkTagBalance(xml);
 });
@@ -147,8 +144,6 @@ test("生成器: 缺少 Wi-Fi 名称时不产出可下载文件", () => {
   let downloaded = null;
   let toastMsg = "";
   const els = {
-    pfHost: { value: "192.168.1.1", addEventListener() {} },
-    pfPort: { value: "8888", addEventListener() {} },
     pfSsidList: { value: "", addEventListener() {} },
     pfCa: { value: CA_PEM, addEventListener() {} },
     toast: { value: "", addEventListener() {} },
@@ -160,6 +155,7 @@ test("生成器: 缺少 Wi-Fi 名称时不产出可下载文件", () => {
       body: { appendChild() {} },
     },
     crypto: globalThis.crypto,
+    window: { location: { origin: "https://example.test" } },
     Blob: globalThis.Blob,
     URL: { createObjectURL: (b) => { downloaded = b; return "blob:x"; } },
     toast: (m) => { toastMsg = m; },

@@ -1,7 +1,7 @@
 import { Hono } from "hono/tiny";
 import { getPageHtml } from "./page.js";
 import { parseCoords, gcj02ToWgs84, toWgs84, round6, inRange } from "./parse.js";
-import { SERVED_ASSETS, CA_CERT_B64 } from "./assets.generated.js";
+import { SERVED_ASSETS, CA_CERT_B64, ENGINE_HOST, ENGINE_PORT } from "./assets.generated.js";
 
 const app = new Hono();
 
@@ -59,6 +59,53 @@ app.get("/ca.cer", (c) => {
 app.get("/ca.b64", (c) => {
   if (!CA_CERT_B64) return c.text("", 404);
   return c.text(CA_CERT_B64, 200, { "Content-Type": "text/plain; charset=utf-8" });
+});
+
+// ---- PAC: 只把三个定位域名导向你电脑的引擎, 其余一律直连 ----
+//
+// 为什么用 PAC 而不是"手动代理 + IP":
+//   * 手动代理是全局的 —— 引擎没开时, 该 Wi-Fi 上所有流量都被送去一个不通的地址, 会断网;
+//     PAC 只影响那三个域名且带回退: 引擎没开时定位请求自动直连, 其它网络毫无影响。
+//   * 电脑地址活在 Worker 上(project.config.json 的 engineHost), 手机只记 PAC 网址;
+//     电脑 IP 变了只改配置重新部署, 手机端零改动。
+//
+// ?h=<host>&p=<port> 可临时覆盖(在手机"自动代理"里就地改地址, 不必重装描述文件)。
+// 该值会被拼进 PAC 脚本, 而 PAC 是一段会被设备执行的 JS —— 所以必须严格清洗。
+const MITM_DOMAINS = ["gs-loc.apple.com", "gs-loc-cn.apple.com", "gsp-ssl.ls.apple.com"];
+
+function sanitizeHost(value) {
+  return typeof value === "string" && /^[A-Za-z0-9.-]{1,253}$/.test(value) ? value : "";
+}
+
+function sanitizePort(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : 0;
+}
+
+export function buildPac(host, port) {
+  const proxyLine = host ? `PROXY ${host}:${port}; DIRECT` : "DIRECT";
+  return (
+    "// WLOC: 只把三个 Apple 定位域名导向你自己的引擎, 其余直连。\n" +
+    "// 引擎不可达时回退 DIRECT, 所以引擎没开也不会断网。\n" +
+    "function FindProxyForURL(url, host) {\n" +
+    `  var wloc = ${JSON.stringify(MITM_DOMAINS)};\n` +
+    "  for (var i = 0; i < wloc.length; i++) {\n" +
+    "    if (host === wloc[i] || dnsDomainIs(host, '.' + wloc[i])) {\n" +
+    `      return ${JSON.stringify(proxyLine)};\n` +
+    "    }\n" +
+    "  }\n" +
+    '  return "DIRECT";\n' +
+    "}\n"
+  );
+}
+
+app.get("/wloc.pac", (c) => {
+  const host = sanitizeHost(c.req.query("h")) || ENGINE_HOST;
+  const port = sanitizePort(c.req.query("p")) || ENGINE_PORT;
+  return c.body(buildPac(host, port), 200, {
+    "Content-Type": "application/x-ns-proxy-autoconfig",
+    "Cache-Control": "no-store",
+  });
 });
 
 // 地图链接解析: 供快捷指令调用。

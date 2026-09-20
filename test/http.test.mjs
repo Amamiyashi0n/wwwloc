@@ -74,6 +74,43 @@ test('未知路由返回 404', async () => {
   assert.equal((await app.request('/does-not-exist')).status, 404);
 });
 
+test('PAC 只把三个定位域名导向引擎, 其余直连且带回退', async () => {
+  const response = await app.request('/wloc.pac');
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('content-type'), 'application/x-ns-proxy-autoconfig');
+  const pac = await response.text();
+
+  // 必须在沙箱里能真正跑起来(PAC 是设备要执行的 JS)
+  const sandbox = { dnsDomainIs: (host, domain) => host.endsWith(domain) };
+  vm.createContext(sandbox);
+  vm.runInContext(pac + '\nthis.pick = FindProxyForURL;', sandbox);
+  const pick = sandbox.pick;
+  assert.equal(typeof pick, 'function', 'PAC 必须定义 FindProxyForURL');
+
+  // 三个定位域名: 结果必须带 DIRECT 回退
+  for (const host of ['gs-loc.apple.com', 'gs-loc-cn.apple.com', 'gsp-ssl.ls.apple.com']) {
+    assert.ok(pick('https://' + host + '/clls/wloc', host).includes('DIRECT'), host + ' 应带回退');
+  }
+  // 其它一切直连 —— 这是"引擎没开也不会断网"的关键
+  for (const host of ['apple.com', 'www.baidu.com', 'gs-loc.apple.com.evil.com']) {
+    assert.equal(pick('https://' + host + '/', host), 'DIRECT', host + ' 应直连');
+  }
+  assert.ok(!/PROXY\s+:\d/.test(pac), '未配置地址时不应生成空主机代理行');
+});
+
+test('PAC 支持 ?h=&p= 覆盖, 且拒绝会把内容注入脚本的值', async () => {
+  const ok = await (await app.request('/wloc.pac?h=my-pc.lan&p=9999')).text();
+  assert.ok(ok.includes('PROXY my-pc.lan:9999; DIRECT'), '合法覆盖应生效');
+
+  for (const bad of ['"; alert(1); //', 'a b', '<script>']) {
+    const pac = await (await app.request('/wloc.pac?h=' + encodeURIComponent(bad))).text();
+    assert.ok(!pac.includes('alert(1)'), '注入 ' + bad + ' 不得进入脚本');
+    assert.ok(!pac.includes('<script>'), '注入 ' + bad + ' 不得进入脚本');
+  }
+  const badPort = await (await app.request('/wloc.pac?h=my-pc.lan&p=99999')).text();
+  assert.ok(!badPort.includes(':99999'), '非法端口应被忽略');
+});
+
 test('站点分发根证书: /ca.cer 为 DER, /ca.b64 为同一份内容的 base64', async () => {
   const cer = await app.request('/ca.cer');
   assert.equal(cer.status, 200);
@@ -99,7 +136,7 @@ test('页面自动载入本站证书并提供指纹与手动兜底', async () =>
   assert.ok(html.includes('public/ca.cer'), '应说明证书来源');
 });
 
-test('主操作只有一个「安装根证书」按钮, 代理配置降级为进阶/手动', async () => {
+test('主操作只有一个「安装根证书」按钮, 代理配置走 PAC 而非手填 IP', async () => {
   const html = await (await app.request('/')).text();
   // 证书卡片内只有 installCertOnly 一个主按钮; buildProfile 降级为次要按钮
   const card = html.slice(html.indexOf('cert-mode-title'));
@@ -109,10 +146,14 @@ test('主操作只有一个「安装根证书」按钮, 代理配置降级为进
   assert.ok(primaryInCard[0][0].includes('installCertOnly'), '主按钮应就是安装证书');
   assert.ok(/<button[^>]*class="[^"]*btn-secondary[^"]*"[^>]*onclick="buildProfile\(\)"/.test(card),
     '含代理的描述文件应降级为次要按钮');
-  // 代理配置不再是主路径: Wi-Fi 名等输入项放在 details 里
-  assert.ok(card.includes('进阶：让描述文件自动配置代理'), '应把自动配置代理标为进阶');
-  assert.ok(card.includes('配置代理 → 手动'), '应给出手机端手动设置代理的指引');
-  assert.ok(card.includes('pfHostEcho'), '代理地址应回显到操作指引里');
+
+  // 代理指引: 用"自动 + PAC 网址", 不再手填服务器/端口
+  assert.ok(card.includes('配置代理 → 自动'), '应指引用自动代理(PAC)');
+  assert.ok(card.includes('pfPacUrl'), '应显示要填的 PAC 网址');
+  assert.ok(!card.includes('配置代理 → 手动'), '不应再指引手动填 IP');
+  assert.ok(!card.includes('pfHost'), '不应再有电脑地址输入框(地址已移到 Worker 的 PAC)');
+
+  assert.ok(card.includes('进阶：把代理写进描述文件'), '自动配置代理应标为进阶');
   // 证书卡片的 details 默认收起, 主界面只剩一个按钮
   assert.ok(!/<details style="margin-top:10px" open>/.test(card), '进阶区应默认收起');
 });
@@ -153,7 +194,7 @@ test('「安装根证书」产出的描述文件只含根证书, 不含代理配
 });
 
 // 在假 DOM 里跑「进阶」的含代理生成器, 取出产出的描述文件
-async function runBuildProfile({ host, port, ssidList }) {
+async function runBuildProfile({ ssidList }) {
   const html = await (await app.request('/')).text();
   const start = html.lastIndexOf('/* ---- 免客户端模式');
   const end = html.indexOf('function pfOnCaFile');
@@ -161,8 +202,6 @@ async function runBuildProfile({ host, port, ssidList }) {
   let downloaded = null;
   const els = {
     pfCa: { value: CA_CERT_B64, addEventListener() {} },
-    pfHost: { value: host, addEventListener() {} },
-    pfPort: { value: port, addEventListener() {} },
     pfSsidList: { value: ssidList, addEventListener() {} },
   };
   const sandbox = {
@@ -175,6 +214,7 @@ async function runBuildProfile({ host, port, ssidList }) {
     Blob: globalThis.Blob,
     URL: { createObjectURL: (b) => { downloaded = b; return 'blob:x'; } },
     toast: () => {},
+    window: { location: { origin: 'http://localhost' } },
     atob: (s) => Buffer.from(s, 'base64').toString('binary'),
     btoa: (s) => Buffer.from(s, 'binary').toString('base64'),
     Uint8Array, String, Math, parseInt,
@@ -186,10 +226,8 @@ async function runBuildProfile({ host, port, ssidList }) {
   return await downloaded.text();
 }
 
-test('含代理的描述文件: 一次写多个 Wi-Fi, 每个都有独立 UUID 与代理指向', async () => {
+test('含代理的描述文件: 一次写多个 Wi-Fi, 每个都指向本站 PAC', async () => {
   const xml = await runBuildProfile({
-    host: '192.168.1.100',
-    port: '8888',
     ssidList: '家里WiFi\n公司WiFi | 密码123\n\n  \n咖啡馆',
   });
   const wifiPayloads = [...xml.matchAll(/<string>com\.apple\.wifi\.managed<\/string>/g)];
@@ -206,26 +244,30 @@ test('含代理的描述文件: 一次写多个 Wi-Fi, 每个都有独立 UUID �
   assert.equal(uuids.length, 5);
   assert.equal(new Set(uuids).size, 5, '所有 PayloadUUID 必须唯一');
 
-  assert.equal((xml.match(/<string>Manual<\/string>/g) || []).length, 3, '每个 Wi-Fi 都应有 Manual 代理');
-  assert.equal((xml.match(/<string>192\.168\.1\.100<\/string>/g) || []).length, 3, '每个 Wi-Fi 的代理都应指向该地址');
+  // 代理一律走 PAC(Auto), 描述文件里不应出现服务器地址/端口
+  assert.equal((xml.match(/<string>Auto<\/string>/g) || []).length, 3, '每个 Wi-Fi 都应使用 Auto(PAC)代理');
+  assert.equal((xml.match(/<key>ProxyPACURL<\/key>/g) || []).length, 3, '每个 Wi-Fi 都应带 PAC 网址');
+  assert.ok(xml.includes('<string>http://localhost/wloc.pac</string>'), 'PAC 网址应取当前站点');
+  assert.ok(!xml.includes('ProxyServer'), '不应再写死代理服务器地址');
+  assert.ok(!xml.includes('<string>Manual</string>'), '不应再使用手动代理');
 });
 
-test('含代理的描述文件: 电脑地址可填主机名——IP 变了手机端无需改动', async () => {
-  const xml = await runBuildProfile({ host: 'my-pc.lan', port: '8888', ssidList: '家里WiFi' });
-  assert.ok(xml.includes('<string>my-pc.lan</string>'), '主机名应原样写入代理服务器字段');
-  assert.ok(!xml.includes('ProxyPACURL'), '不应使用 PAC(全局代理 payload 需要监管设备)');
+test('含代理的描述文件: 不携带任何电脑地址——IP 变了无需重装', async () => {
+  const xml = await runBuildProfile({ ssidList: '家里WiFi' });
+  assert.ok(xml.includes('ProxyPACURL'), '应使用 PAC');
+  // 描述文件里除 PAC 网址(站点自身)外不应出现 IP 形式的地址
+  const ipLike = xml.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g) || [];
+  assert.deepEqual(ipLike, [], '描述文件不应包含 IP: ' + ipLike.join(','));
 });
 
-test('含代理的描述文件: 缺 Wi-Fi 名称或地址时不产出文件', async () => {
+test('含代理的描述文件: 缺 Wi-Fi 名称时不产出文件', async () => {
   const html = await (await app.request('/')).text();
   const start = html.lastIndexOf('/* ---- 免客户端模式');
   const code = html.slice(start, html.indexOf('function pfOnCaFile'));
-  for (const [host, list] of [['192.168.1.100', ''], ['', '家里WiFi']]) {
+  for (const list of ['', '   \n  \n']) {
     let downloaded = null;
     const els = {
       pfCa: { value: CA_CERT_B64, addEventListener() {} },
-      pfHost: { value: host, addEventListener() {} },
-      pfPort: { value: '8888', addEventListener() {} },
       pfSsidList: { value: list, addEventListener() {} },
     };
     const sandbox = {
@@ -237,6 +279,7 @@ test('含代理的描述文件: 缺 Wi-Fi 名称或地址时不产出文件', as
       crypto: globalThis.crypto, Blob: globalThis.Blob,
       URL: { createObjectURL: (b) => { downloaded = b; return 'blob:x'; } },
       toast: () => {},
+      window: { location: { origin: 'https://example.test' } },
       atob: (s) => Buffer.from(s, 'base64').toString('binary'),
       btoa: (s) => Buffer.from(s, 'binary').toString('base64'),
       Uint8Array, String, Math, parseInt,
@@ -244,6 +287,6 @@ test('含代理的描述文件: 缺 Wi-Fi 名称或地址时不产出文件', as
     vm.createContext(sandbox);
     vm.runInContext(code, sandbox);
     sandbox.buildProfile();
-    assert.equal(downloaded, null, `host=${host} list=${list} 时不应产出文件`);
+    assert.equal(downloaded, null, `list=${JSON.stringify(list)} 时不应产出文件`);
   }
 });

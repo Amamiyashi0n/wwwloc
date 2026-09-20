@@ -546,13 +546,13 @@ function installCertOnly() {
   toast('已下载, 去 设置 → 通用 → VPN与设备管理 安装');
 }
 
-// 进阶: 描述文件同时带 Wi-Fi 代理配置, 免去手动设置(需填电脑地址与 Wi-Fi 名)
-// 支持一次写多个 Wi-Fi(每行一个, 可用 "SSID | 密码"), 装一次覆盖所有常去网络。
+// 进阶: 描述文件同时带 Wi-Fi + PAC 代理配置, 免去手动设置。
+// 多个 Wi-Fi 每行一个(可用 "SSID | 密码"); 代理用 Auto + PAC 网址,
+// 手机端因此不携带电脑地址 —— 地址活在 Worker 的 PAC 里。
 function buildProfile() {
-  var host = document.getElementById('pfHost').value.trim();
-  var port = parseInt(document.getElementById('pfPort').value, 10) || 8888;
+  var pacUrl = window.location.origin + '/wloc.pac';
   var ca = pfCurrentCa();
-  if (!host || !ca) { toast('请先填写电脑地址, 并载入证书'); return; }
+  if (!ca) { toast('本站未配置根证书'); return; }
   var lines = document.getElementById('pfSsidList').value.split(String.fromCharCode(10));
   var nets = [];
   for (var i = 0; i < lines.length; i++) {
@@ -576,9 +576,8 @@ function buildProfile() {
       '<key>HIDDEN_NETWORK</key><false/>' + PF_NL + '<key>AutoJoin</key><true/>' + PF_NL +
       '<key>SSID_STR</key><string>' + pfEsc(net.ssid) + '</string>' + PF_NL +
       (net.pass ? '<key>Password</key><string>' + pfEsc(net.pass) + '</string>' + PF_NL : '') +
-      '<key>ProxyType</key><string>Manual</string>' + PF_NL +
-      '<key>ProxyServer</key><string>' + pfEsc(host) + '</string>' + PF_NL +
-      '<key>ProxyPort</key><integer>' + port + '</integer>' + PF_NL +
+      '<key>ProxyType</key><string>Auto</string>' + PF_NL +
+      '<key>ProxyPACURL</key><string>' + pfEsc(pacUrl) + '</string>' + PF_NL +
       '</dict>');
   }
   pfDownload(pfPlist(payloads), 'wloc.mobileconfig');
@@ -605,16 +604,20 @@ function pfOnCaFile(e) {
 }
 document.getElementById('pfCaFile').addEventListener('change', pfOnCaFile);
 
-// 代理地址随输入即时更新到下方操作指引里
-function pfUpdateHostHint() {
-  var el = document.getElementById('pfHostEcho');
-  if (!el) return;
-  var host = document.getElementById('pfHost').value.trim();
-  var port = parseInt(document.getElementById('pfPort').value, 10) || 8888;
-  el.textContent = host ? (host + '   端口 ' + port) : '（在上面「进阶」里填一次电脑 IP，这里会自动显示）';
+// 主流程里回显 PAC 网址(手机"自动代理"要填的就是它), 并支持一键复制
+function pfFillPacUrl() {
+  var el = document.getElementById('pfPacUrl');
+  if (el) el.textContent = window.location.origin + '/wloc.pac';
 }
-document.getElementById('pfHost').addEventListener('input', pfUpdateHostHint);
-document.getElementById('pfPort').addEventListener('input', pfUpdateHostHint);
+function pfCopyPacUrl() {
+  var url = window.location.origin + '/wloc.pac';
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function () { toast('已复制: ' + url); }, function () { toast(url, 4000); });
+  } else {
+    toast(url, 4000);
+  }
+}
+pfFillPacUrl();
 
 // 从本站自动载入根证书 —— 站点即证书来源, 手机不必再从引擎管理页手动取文件。
 // 只有公开证书; 私钥始终留在引擎所在的机器上。
@@ -674,25 +677,26 @@ queryActive();
     <ol style="font-size:13px;color:#333;line-height:1.9;padding-left:18px;margin-top:10px">
       <li>按上面的按钮下载 → <b>设置 → 通用 → VPN与设备管理 → 安装</b></li>
       <li><b>设置 → 通用 → 关于本机 → 证书信任设置</b> → 对 <code>WLOC Root CA</code> 打开<b>完全信任</b>（必做，否则不生效）</li>
-      <li>把手机的 Wi-Fi 代理指向电脑：<br>
-        <b>设置 → 无线局域网 → 当前 Wi-Fi 的 ⓘ → 配置代理 → 手动</b><br>
-        服务器：<span id="pfHostEcho" style="font-family:'SF Mono',monospace;color:var(--blue)">（在下面「进阶」里填一次电脑 IP，这里会自动显示）</span>
+      <li>让定位请求走电脑：<br>
+        <b>设置 → 无线局域网 → 当前 Wi-Fi 的 ⓘ → 配置代理 → 自动</b><br>
+        网址：<span id="pfPacUrl" style="font-family:'SF Mono',monospace;color:var(--blue);overflow-wrap:anywhere"></span>
+        <button class="btn btn-sm btn-secondary" onclick="pfCopyPacUrl()" style="margin-left:6px">复制</button>
+        <br><span style="color:var(--gray)">这个网址里没有 IP —— 电脑地址放在本站的 PAC 里，以后电脑换 IP 也不用动手机。</span>
       </li>
       <li>电脑上启动引擎：<code>cd engine && npm start</code>（第一次先 <code>bash tools/make-certs.sh</code> 与 <code>cp config.example.json config.json</code>）</li>
     </ol>
     <p style="font-size:12px;color:var(--gray);line-height:1.6;margin-top:6px">
       装完在下面选点、点「储存到设备」；然后按提示刷新一次定位。引擎终端出现 <code>[proxy] MITM gs-loc</code> 即说明链路通了。
+      <br><b>PAC 只把那三个定位域名送进电脑，其余全部直连</b> —— 引擎没开着时不会影响其它上网。
     </p>
 
     <details style="margin-top:10px">
-      <summary style="font-size:13px;cursor:pointer;color:var(--blue)">进阶：让描述文件自动配置代理（可一次写多个 Wi-Fi）</summary>
+      <summary style="font-size:13px;cursor:pointer;color:var(--blue)">进阶：把代理写进描述文件（不用手动配，可一次写多个 Wi-Fi）</summary>
       <p style="font-size:11px;color:var(--gray);margin:6px 0">
-        填电脑地址与 Wi-Fi 名，描述文件会把这些 Wi-Fi 的代理一并指向电脑 —— 上面第 3 步就不用做了。
-        <b>这里可以一次写多个 Wi-Fi（每行一个，带密码写成 <code>SSID | 密码</code>）</b>，装一次就够了，以后换网络不用重装。
-        电脑地址建议填**主机名**（或 Cloudflare DNS 里指向内网 IP 的域名）而不是 IP —— 这样电脑 IP 变了也不用重新生成。
+        只填 Wi-Fi 名即可 —— 描述文件会把这些 Wi-Fi 的代理设成上面的 PAC 网址，第 3 步就不用手动做了。
+        <b>可以一次写多个 Wi-Fi（每行一个，带密码写成 <code>SSID | 密码</code>）</b>，装一次覆盖你常去的网络。
+        电脑地址不在这里填：它由站点 PAC 提供，改 <code>project.config.json</code> 的 <code>engineHost</code> 推送即可生效。
       </p>
-      <div class="input-row" style="margin-top:8px"><input id="pfHost" placeholder="电脑地址：主机名（推荐）或局域网 IP，如 MYPC 或 192.168.1.100" /></div>
-      <div class="input-row"><input id="pfPort" type="number" value="8888" placeholder="代理端口（默认 8888）" /></div>
       <textarea id="pfSsidList" placeholder="Wi-Fi 名称，每行一个&#10;家里WiFi&#10;公司WiFi | 密码123" style="width:100%;height:76px;margin-top:8px;font-family:'SF Mono',monospace;font-size:12px;border:1px solid #d1d1d6;border-radius:8px;padding:8px"></textarea>
       <div class="row"><button class="btn btn-secondary" onclick="buildProfile()">生成含代理的描述文件</button></div>
     </details>
