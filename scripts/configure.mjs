@@ -79,25 +79,7 @@ export async function generatedFiles() {
       '\n};\n',
   );
 
-  // 4. README 订阅区
-  const readme = (await readFile(path.join(root, 'README.md'), 'utf8')).replaceAll('\r\n', '\n');
-  const rows = [
-    '<!-- subscriptions:start -->',
-    '| 客户端 | 模块订阅地址 |',
-    '| --- | --- |',
-    ...moduleLinks.map(({ name, path }) => `| ${name} | [${site}${path}](${site}${path}) |`),
-    '',
-    `选点页面:[${site}/](${site}/) 。`,
-    '',
-    `[浏览源码](${repoUrl})`,
-    '<!-- subscriptions:end -->',
-  ].join('\n');
-  if (!readme.includes('<!-- subscriptions:start -->') || !readme.includes('<!-- subscriptions:end -->')) {
-    throw new Error('README 缺少订阅区标记');
-  }
-  files.set('README.md', readme.replace(/<!-- subscriptions:start -->[\s\S]*?<!-- subscriptions:end -->/, rows));
-
-  // 5. 用户使用指南: 同样注入站点地址, 部署后可直接把链接发给使用者
+  // 4. 用户使用指南: 注入站点地址, 部署后可直接把链接发给使用者
   const usage = (await readFile(path.join(root, 'templates/USAGE.md'), 'utf8')).replaceAll('\r\n', '\n');
   files.set('docs/USAGE.md', usage.replaceAll('{{SITE}}', site));
 

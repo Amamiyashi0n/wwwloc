@@ -24,7 +24,9 @@ export function buildMobileConfig(config) {
   const caPem = readFileSync(`${config.certsDir}/ca.crt`);
   const der = pemToDer(caPem);
   const identifier = config.profileIdentifier || "com.selfhost.wloc.test";
+  // 每个 payload 与顶层配置都必须有各自唯一的 PayloadUUID
   const uuids = Array.from({ length: 1 + config.ssids.length }, () => randomUUID().toUpperCase());
+  const topLevelUuid = randomUUID().toUpperCase();
 
   const content = [];
   content.push(`<dict>
@@ -71,7 +73,7 @@ ${content.join("\n")}
   <key>PayloadRemovalDisallowed</key><false/>
   <key>PayloadScope</key><string>System</string>
   <key>PayloadType</key><string>Configuration</string>
-  <key>PayloadUUID</key><string>${uuids[0]}</string>
+  <key>PayloadUUID</key><string>${topLevelUuid}</string>
   <key>PayloadVersion</key><integer>1</integer>
 </dict>
 </plist>
