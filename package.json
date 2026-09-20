@@ -1,0 +1,24 @@
+{
+  "name": "wloc-page",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "configure": "node scripts/configure.mjs",
+    "check": "node scripts/check.mjs",
+    "check:release": "node scripts/check.mjs --release",
+    "test": "node --test test/*.test.mjs test/*.test.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify",
+    "build:check": "wrangler deploy --dry-run --outdir build"
+  },
+  "dependencies": {
+    "hono": "4.13.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.131.0"
+  }
+}

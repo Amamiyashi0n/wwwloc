@@ -1,0 +1,8 @@
+{
+  "name": "wloc-page",
+  "main": "src/index.js",
+  // 只用 fetch/URL/TextDecoder 等标准 Web API, 不需要 nodejs_compat。
+  "compatibility_date": "2026-08-05",
+  // 关闭持久化日志采集, 与「/api/parse 不记日志」的说法对齐; 调试用 wrangler tail。
+  "observability": { "enabled": false }
+}
