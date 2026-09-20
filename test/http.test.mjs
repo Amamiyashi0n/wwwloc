@@ -98,3 +98,56 @@ test('页面自动载入本站证书并提供指纹与手动兜底', async () =>
   assert.ok(html.includes('手动指定根证书'), '应保留手动兜底入口');
   assert.ok(html.includes('public/ca.cer'), '应说明证书来源');
 });
+
+test('主操作只有一个「安装根证书」按钮, 代理配置降级为进阶/手动', async () => {
+  const html = await (await app.request('/')).text();
+  // 证书卡片内只有 installCertOnly 一个主按钮; buildProfile 降级为次要按钮
+  const card = html.slice(html.indexOf('cert-mode-title'));
+  assert.ok(card.includes('installCertOnly()'), '主按钮应调用只装证书的函数');
+  const primaryInCard = [...card.matchAll(/<button[^>]*class="[^"]*btn-primary[^"]*"[^>]*>/g)];
+  assert.equal(primaryInCard.length, 1, '证书卡片内只应有一个主按钮');
+  assert.ok(primaryInCard[0][0].includes('installCertOnly'), '主按钮应就是安装证书');
+  assert.ok(/<button[^>]*class="[^"]*btn-secondary[^"]*"[^>]*onclick="buildProfile\(\)"/.test(card),
+    '含代理的描述文件应降级为次要按钮');
+  // 代理配置不再是主路径: Wi-Fi 名等输入项放在 details 里
+  assert.ok(card.includes('进阶：让描述文件自动配置代理'), '应把自动配置代理标为进阶');
+  assert.ok(card.includes('配置代理 → 手动'), '应给出手机端手动设置代理的指引');
+  assert.ok(card.includes('pfHostEcho'), '代理地址应回显到操作指引里');
+  // 证书卡片的 details 默认收起, 主界面只剩一个按钮
+  assert.ok(!/<details style="margin-top:10px" open>/.test(card), '进阶区应默认收起');
+});
+
+test('「安装根证书」产出的描述文件只含根证书, 不含代理配置', async () => {
+  const html = await (await app.request('/')).text();
+  const marker = 'function installCertOnly()';
+  const start = html.indexOf(marker);
+  assert.ok(start > 0);
+  const end = html.indexOf('function buildProfile()', start);
+  const code = html.slice(html.lastIndexOf('/* ---- 免客户端模式', start), end);
+
+  let downloaded = null;
+  const els = { pfCa: { value: CA_CERT_B64, addEventListener() {} } };
+  const sandbox = {
+    document: {
+      getElementById: (id) => els[id] ?? { value: '', addEventListener() {} },
+      createElement: () => ({ href: '', download: '', click() {}, remove() {} }),
+      body: { appendChild() {} },
+    },
+    crypto: globalThis.crypto,
+    Blob: globalThis.Blob,
+    URL: { createObjectURL: (b) => { downloaded = b; return 'blob:x'; } },
+    toast: () => {},
+    atob: (s) => Buffer.from(s, 'base64').toString('binary'),
+    btoa: (s) => Buffer.from(s, 'binary').toString('base64'),
+    Uint8Array, String, Math, parseInt,
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(code, sandbox);
+  sandbox.installCertOnly();
+  assert.ok(downloaded, '应产出可下载的描述文件');
+  const xml = await downloaded.text();
+  assert.ok(xml.includes('com.apple.security.root'), '应含根证书 payload');
+  assert.ok(!xml.includes('com.apple.wifi.managed'), '不应含 Wi-Fi/代理 payload');
+  assert.ok(!xml.includes('ProxyServer'), '不应含代理服务器配置');
+  assert.ok(xml.includes('<data>' + CA_CERT_B64 + '</data>'), '应嵌入本站证书');
+});

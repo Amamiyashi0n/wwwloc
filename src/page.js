@@ -490,57 +490,86 @@ document.getElementById('favNameInput').addEventListener('keydown', e => { if(e.
 renderFavs();
 queryActive();
 
-/* ---- 免客户端模式: 描述文件生成(全部在本地完成, 不上传) ---- */
+/* ---- 免客户端模式: 证书分发与描述文件生成(全部在本地完成, 不上传) ---- */
 function pfUuid() {
   return (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){ var r = Math.random()*16|0; return (c === 'x' ? r : (r&0x3|0x8)).toString(16); })).toUpperCase();
 }
 function pfEsc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+function pfCurrentCa() {
+  return document.getElementById('pfCa').value.replace(/-----[^-]+-----/g, '').replace(/\\s+/g, '');
+}
+function pfDownload(xml, filename) {
+  var blob = new Blob([xml], { type: 'application/x-apple-aspen-config' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+var PF_NL = String.fromCharCode(10);
+function pfPlist(payloadXmls) {
+  return '<?xml version="1.0" encoding="UTF-8"?>' + PF_NL +
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' + PF_NL +
+    '<plist version="1.0">' + PF_NL + '<dict>' + PF_NL +
+    '<key>PayloadContent</key>' + PF_NL + '<array>' + PF_NL +
+    payloadXmls.join(PF_NL) + PF_NL +
+    '</array>' + PF_NL +
+    '<key>PayloadDisplayName</key><string>WLOC (Testing)</string>' + PF_NL +
+    '<key>PayloadIdentifier</key><string>com.selfhost.wloc</string>' + PF_NL +
+    '<key>PayloadOrganization</key><string>selfhost-wloc</string>' + PF_NL +
+    '<key>PayloadRemovalDisallowed</key><false/>' + PF_NL +
+    '<key>PayloadScope</key><string>System</string>' + PF_NL +
+    '<key>PayloadType</key><string>Configuration</string>' + PF_NL +
+    '<key>PayloadUUID</key><string>' + pfUuid() + '</string>' + PF_NL +
+    '<key>PayloadVersion</key><integer>1</integer>' + PF_NL +
+    '</dict>' + PF_NL + '</plist>' + PF_NL;
+}
+function pfCaPayload(ca) {
+  return '<dict>' + PF_NL +
+    '<key>PayloadType</key><string>com.apple.security.root</string>' + PF_NL +
+    '<key>PayloadVersion</key><integer>1</integer>' + PF_NL +
+    '<key>PayloadIdentifier</key><string>com.selfhost.wloc.rootca</string>' + PF_NL +
+    '<key>PayloadUUID</key><string>' + pfUuid() + '</string>' + PF_NL +
+    '<key>PayloadDisplayName</key><string>WLOC Root CA (Testing)</string>' + PF_NL +
+    '<key>PayloadDescription</key><string>Only install on your own authorized test device.</string>' + PF_NL +
+    '<key>PayloadContent</key><data>' + ca + '</data>' + PF_NL +
+    '</dict>';
+}
+
+// 主操作: 只装根证书, 一按就下载 —— 代理在装完后于手机 Wi-Fi 设置里手动填。
+function installCertOnly() {
+  var ca = pfCurrentCa();
+  if (!ca) { toast('本站未配置根证书'); return; }
+  try { atob(ca); } catch (e) { toast('CA 证书内容无效'); return; }
+  pfDownload(pfPlist([pfCaPayload(ca)]), 'wloc-root-ca.mobileconfig');
+  toast('已下载, 去 设置 → 通用 → VPN与设备管理 安装');
+}
+
+// 进阶: 描述文件同时带 Wi-Fi 代理配置, 免去手动设置(需填电脑 IP 与 Wi-Fi 名)
 function buildProfile() {
   var host = document.getElementById('pfHost').value.trim();
   var port = parseInt(document.getElementById('pfPort').value, 10) || 8888;
   var ssid = document.getElementById('pfSsid').value.trim();
   var wifiPass = document.getElementById('pfWifiPass').value;
-  var ca = document.getElementById('pfCa').value.replace(/-----[^-]+-----/g, '').replace(/\\s+/g, '');
-  if (!host || !ssid || !ca) { toast('请先填写代理地址、Wi-Fi 名称，并载入 CA 证书'); return; }
+  var ca = pfCurrentCa();
+  if (!host || !ssid || !ca) { toast('请先填写电脑 IP、Wi-Fi 名称, 并载入证书'); return; }
   try { atob(ca); } catch (e) { toast('CA 证书内容不是有效的 base64/PEM'); return; }
-  var NL = String.fromCharCode(10);
-  var xml = '<?xml version="1.0" encoding="UTF-8"?>' + NL +
-    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' + NL +
-    '<plist version="1.0">' + NL + '<dict>' + NL + '<key>PayloadContent</key>' + NL + '<array>' + NL +
-    '<dict>' + NL + '<key>PayloadType</key><string>com.apple.security.root</string>' + NL +
-    '<key>PayloadVersion</key><integer>1</integer>' + NL +
-    '<key>PayloadIdentifier</key><string>com.selfhost.wloc.rootca</string>' + NL +
-    '<key>PayloadUUID</key><string>' + pfUuid() + '</string>' + NL +
-    '<key>PayloadDisplayName</key><string>WLOC Selfhost Root CA (Testing)</string>' + NL +
-    '<key>PayloadDescription</key><string>Only install on your own authorized test device.</string>' + NL +
-    '<key>PayloadContent</key><data>' + ca + '</data>' + NL + '</dict>' + NL +
-    '<dict>' + NL + '<key>PayloadType</key><string>com.apple.wifi.managed</string>' + NL +
-    '<key>PayloadVersion</key><integer>1</integer>' + NL +
-    '<key>PayloadIdentifier</key><string>com.selfhost.wloc.wifi</string>' + NL +
-    '<key>PayloadUUID</key><string>' + pfUuid() + '</string>' + NL +
-    '<key>PayloadDisplayName</key><string>WLOC Wi-Fi (' + pfEsc(ssid) + ')</string>' + NL +
-    '<key>HIDDEN_NETWORK</key><false/>' + NL + '<key>AutoJoin</key><true/>' + NL +
-    '<key>SSID_STR</key><string>' + pfEsc(ssid) + '</string>' + NL +
-    (wifiPass ? '<key>Password</key><string>' + pfEsc(wifiPass) + '</string>' + NL : '') +
-    '<key>ProxyType</key><string>Manual</string>' + NL +
-    '<key>ProxyServer</key><string>' + pfEsc(host) + '</string>' + NL +
-    '<key>ProxyPort</key><integer>' + port + '</integer>' + NL + '</dict>' + NL +
-    '</array>' + NL + '<key>PayloadDisplayName</key><string>WLOC Selfhost (Testing)</string>' + NL +
-    '<key>PayloadIdentifier</key><string>com.selfhost.wloc</string>' + NL +
-    '<key>PayloadOrganization</key><string>selfhost-wloc</string>' + NL +
-    '<key>PayloadRemovalDisallowed</key><false/>' + NL +
-    '<key>PayloadScope</key><string>System</string>' + NL +
-    '<key>PayloadType</key><string>Configuration</string>' + NL +
-    '<key>PayloadUUID</key><string>' + pfUuid() + '</string>' + NL +
-    '<key>PayloadVersion</key><integer>1</integer>' + NL + '</dict>' + NL + '</plist>' + NL;
-  var blob = new Blob([xml], { type: 'application/x-apple-aspen-config' });
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'wloc.mobileconfig';
-  document.body.appendChild(a); a.click(); a.remove();
-  toast('描述文件已生成，请在 Safari 下载记录中安装');
+  var wifi = '<dict>' + PF_NL +
+    '<key>PayloadType</key><string>com.apple.wifi.managed</string>' + PF_NL +
+    '<key>PayloadVersion</key><integer>1</integer>' + PF_NL +
+    '<key>PayloadIdentifier</key><string>com.selfhost.wloc.wifi</string>' + PF_NL +
+    '<key>PayloadUUID</key><string>' + pfUuid() + '</string>' + PF_NL +
+    '<key>PayloadDisplayName</key><string>WLOC Wi-Fi (' + pfEsc(ssid) + ')</string>' + PF_NL +
+    '<key>HIDDEN_NETWORK</key><false/>' + PF_NL + '<key>AutoJoin</key><true/>' + PF_NL +
+    '<key>SSID_STR</key><string>' + pfEsc(ssid) + '</string>' + PF_NL +
+    (wifiPass ? '<key>Password</key><string>' + pfEsc(wifiPass) + '</string>' + PF_NL : '') +
+    '<key>ProxyType</key><string>Manual</string>' + PF_NL +
+    '<key>ProxyServer</key><string>' + pfEsc(host) + '</string>' + PF_NL +
+    '<key>ProxyPort</key><integer>' + port + '</integer>' + PF_NL +
+    '</dict>';
+  pfDownload(pfPlist([pfCaPayload(ca), wifi]), 'wloc.mobileconfig');
+  toast('已生成(含代理配置), 请在 Safari 下载记录中安装');
 }
 function pfOnCaFile(e) {
   var f = e.target.files[0]; if (!f) return;
@@ -562,6 +591,17 @@ function pfOnCaFile(e) {
   r.readAsArrayBuffer(f);
 }
 document.getElementById('pfCaFile').addEventListener('change', pfOnCaFile);
+
+// 代理地址随输入即时更新到下方操作指引里
+function pfUpdateHostHint() {
+  var el = document.getElementById('pfHostEcho');
+  if (!el) return;
+  var host = document.getElementById('pfHost').value.trim();
+  var port = parseInt(document.getElementById('pfPort').value, 10) || 8888;
+  el.textContent = host ? (host + '   端口 ' + port) : '（在上面「进阶」里填一次电脑 IP，这里会自动显示）';
+}
+document.getElementById('pfHost').addEventListener('input', pfUpdateHostHint);
+document.getElementById('pfPort').addEventListener('input', pfUpdateHostHint);
 
 // 从本站自动载入根证书 —— 站点即证书来源, 手机不必再从引擎管理页手动取文件。
 // 只有公开证书; 私钥始终留在引擎所在的机器上。
@@ -608,33 +648,46 @@ queryActive();
 <\/script>
 <section class="panel" aria-labelledby="cert-mode-title">
   <div class="card">
-    <h2 id="cert-mode-title" style="font-size:16px;margin-bottom:8px">免客户端模式：证书 + 描述文件（不装任何代理 App）</h2>
+    <h2 id="cert-mode-title" style="font-size:16px;margin-bottom:8px">免客户端模式</h2>
     <p style="font-size:13px;color:var(--gray);line-height:1.6">
-      改写引擎由<a href="${SOURCE_URL}" target="_blank" rel="noopener noreferrer">本仓库 engine/ 目录</a>提供，跑在你自己的电脑上（Node ≥ 18，无需 iOS 开发者账号）；
-      手机只装一份描述文件。引擎与手机须在同一 Wi-Fi。
+      不装任何代理 App。手机只装一张根证书 + 一份协议；改写由<a href="${SOURCE_URL}" target="_blank" rel="noopener noreferrer">本仓库 engine/ 目录</a>的引擎在你电脑上完成（Node ≥ 18）。
     </p>
-    <ol style="font-size:13px;color:#333;line-height:1.9;padding-left:18px">
-      <li>电脑上运行引擎：<code>cd engine && bash tools/make-certs.sh && npm start</code>（首次先 <code>cp config.example.json config.json</code>，填电脑局域网 IP 与 Wi-Fi 名）</li>
-      <li>手机 Safari 打开本页，在下方生成并安装描述文件；再到 设置→通用→关于本机→<b>证书信任设置</b> 开启<b>完全信任</b>（必做）</li>
-      <li>本页选好位置点「储存到设备」——保存请求经引擎代理落库</li>
-      <li>刷新定位：关闭定位服务 → 飞行模式（确认 Wi-Fi/蓝牙关闭）→ 等 10 秒 → 关闭飞行模式 → 网络恢复后重新开启定位</li>
+
+    <div class="row" style="margin-top:14px">
+      <button class="btn btn-primary" onclick="installCertOnly()" style="font-size:15px;padding:14px">安装根证书</button>
+    </div>
+    <p id="pfCaStatus" style="font-size:11px;color:var(--green);margin-top:8px"></p>
+
+    <ol style="font-size:13px;color:#333;line-height:1.9;padding-left:18px;margin-top:10px">
+      <li>按上面的按钮下载 → <b>设置 → 通用 → VPN与设备管理 → 安装</b></li>
+      <li><b>设置 → 通用 → 关于本机 → 证书信任设置</b> → 对 <code>WLOC Root CA</code> 打开<b>完全信任</b>（必做，否则不生效）</li>
+      <li>把手机的 Wi-Fi 代理指向电脑：<br>
+        <b>设置 → 无线局域网 → 当前 Wi-Fi 的 ⓘ → 配置代理 → 手动</b><br>
+        服务器：<span id="pfHostEcho" style="font-family:'SF Mono',monospace;color:var(--blue)">（在下面「进阶」里填一次电脑 IP，这里会自动显示）</span>
+      </li>
+      <li>电脑上启动引擎：<code>cd engine && npm start</code>（第一次先 <code>bash tools/make-certs.sh</code> 与 <code>cp config.example.json config.json</code>）</li>
     </ol>
-    <details style="margin-top:8px" open>
-      <summary style="font-size:13px;cursor:pointer;color:var(--blue)">生成描述文件（只需填引擎地址与 Wi-Fi，证书已由本站自动载入）</summary>
+    <p style="font-size:12px;color:var(--gray);line-height:1.6;margin-top:6px">
+      装完在下面选点、点「储存到设备」；然后按提示刷新一次定位。引擎终端出现 <code>[proxy] MITM gs-loc</code> 即说明链路通了。
+    </p>
+
+    <details style="margin-top:10px">
+      <summary style="font-size:13px;cursor:pointer;color:var(--blue)">进阶：让描述文件自动配置代理（免去手动填一步）</summary>
+      <p style="font-size:11px;color:var(--gray);margin:6px 0">填电脑 IP 与 Wi-Fi 名，生成的描述文件会连带把该 Wi-Fi 的代理指向电脑 —— 上面第 3 步就不用做了。注意：电脑 IP 变了要重新生成。</p>
       <div class="input-row" style="margin-top:8px"><input id="pfHost" placeholder="电脑局域网 IP，如 192.168.1.100" /></div>
       <div class="input-row"><input id="pfPort" type="number" value="8888" placeholder="代理端口（默认 8888）" /></div>
       <div class="input-row"><input id="pfSsid" placeholder="Wi-Fi 名称（SSID）" /></div>
       <div class="input-row"><input id="pfWifiPass" placeholder="Wi-Fi 密码（可空，填了会写入描述文件）" /></div>
-      <div class="row"><button class="btn btn-primary" onclick="buildProfile()">生成描述文件并下载</button></div>
-      <p id="pfCaStatus" style="font-size:11px;color:var(--green);margin-top:8px"></p>
-      <details style="margin-top:4px">
-        <summary style="font-size:11px;color:var(--gray);cursor:pointer">证书不对？手动指定根证书</summary>
-        <p style="font-size:11px;color:var(--gray);margin:6px 0">本站分发的证书来自仓库 <code>public/ca.cer</code>，必须与引擎 <code>engine/certs/ca.crt</code> 是同一张。若你重新生成过证书，请重新 <code>npm run configure</code> 并提交。</p>
-        <div class="input-row"><button class="btn btn-sm btn-secondary" onclick="window.open('/ca.cer')">下载本站 CA</button><input id="pfCaFile" type="file" accept=".cer,.pem,.crt,.txt" /></div>
-        <textarea id="pfCa" placeholder="或粘贴/手工指定 CA 内容（PEM 或 base64）" style="width:100%;height:64px;margin-top:8px;font-family:'SF Mono',monospace;font-size:11px;border:1px solid #d1d1d6;border-radius:8px;padding:8px;word-break:break-all"></textarea>
-      </details>
-      <p style="font-size:11px;color:var(--gray);margin-top:6px">描述文件在你的手机上本地生成；证书是公开证书，私钥始终只在你电脑上的引擎里。</p>
+      <div class="row"><button class="btn btn-secondary" onclick="buildProfile()">生成含代理的描述文件</button></div>
     </details>
+
+    <details style="margin-top:4px">
+      <summary style="font-size:11px;color:var(--gray);cursor:pointer">证书不对？手动指定根证书</summary>
+      <p style="font-size:11px;color:var(--gray);margin:6px 0">本站分发的证书来自仓库 <code>public/ca.cer</code>，必须与引擎 <code>engine/certs/ca.crt</code> 是同一张。若重新生成过证书，请重跑 <code>npm run configure</code> 并提交。</p>
+      <div class="input-row"><button class="btn btn-sm btn-secondary" onclick="window.open('/ca.cer')">下载本站 CA</button><input id="pfCaFile" type="file" accept=".cer,.pem,.crt,.txt" /></div>
+      <textarea id="pfCa" placeholder="或粘贴/手工指定 CA 内容（PEM 或 base64）" style="width:100%;height:64px;margin-top:8px;font-family:'SF Mono',monospace;font-size:11px;border:1px solid #d1d1d6;border-radius:8px;padding:8px;word-break:break-all"></textarea>
+    </details>
+    <p style="font-size:11px;color:var(--gray);margin-top:6px">证书是公开证书（无私钥）；私钥始终只在你电脑上的引擎里。</p>
   </div>
 </section>
 <footer style="padding:16px;text-align:center;font-size:13px;color:#666">
