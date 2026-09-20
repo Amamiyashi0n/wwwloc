@@ -11,9 +11,10 @@ test('首页包含源码入口且内联脚本可解析', async () => {
   const html = await response.text();
   assert.ok(html.includes(`href="${SOURCE_URL}"`));
   assert.equal(MODULE_LINKS.length, 5);
-  for (const { url } of MODULE_LINKS) {
-    assert.ok(html.includes(`href="${url}"`));
-    assert.ok(html.includes(`>${url}</a>`), '模块地址应以完整 URL 显示');
+  // app.request 的默认 origin 是 http://localhost —— 页脚订阅链接应基于它渲染
+  for (const { path } of MODULE_LINKS) {
+    assert.ok(html.includes(`href="http://localhost${path}"`));
+    assert.ok(html.includes(`>http://localhost${path}</a>`), '模块地址应以完整 URL 显示');
   }
   const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(x => x[1]).filter(x => x.trim());
   assert.ok(scripts.length > 0);
@@ -33,7 +34,7 @@ test('静态路由提供两个 WLOC 脚本且可执行解析', async () => {
   }
 });
 
-test('模块订阅路由提供五种格式', async () => {
+test('模块订阅路由提供五种格式, 且按请求 origin 注入站点地址', async () => {
   const names = ['wloc.sgmodule', 'wloc.conf', 'wloc.lpx', 'wloc.stoverride', 'wloc.module'];
   for (const name of names) {
     const response = await app.request(`/modules/${name}`);
@@ -41,6 +42,10 @@ test('模块订阅路由提供五种格式', async () => {
     const body = (await response.text()).replaceAll('\\', '');
     assert.ok(body.includes('/clls/wloc'), `${name} 应包含响应改写规则`);
     assert.ok(body.includes('/wloc-settings/save'), `${name} 应包含保存拦截规则`);
+    // {{SITE}} 占位符必须被请求 origin 替换干净 —— 一键部署零配置的关键
+    assert.ok(!body.includes('{{SITE}}'), `${name} 不应残留模板占位符`);
+    assert.ok(body.includes('http://localhost/wloc.js'), `${name} 脚本地址应指向请求 origin`);
+    assert.ok(body.includes('http://localhost/wloc-settings.js'), `${name} 设置脚本地址应指向请求 origin`);
   }
   assert.equal((await app.request('/modules/not-exist.sgmodule')).status, 404);
 });

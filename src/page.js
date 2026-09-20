@@ -1,7 +1,10 @@
 import { GCJ_BROWSER_JS } from "./gcj-browser.js";
 import { SOURCE_URL, MODULE_LINKS } from "./project.js";
 
-export function getPageHtml() {
+// origin: 当前请求的站点根地址(如 https://wloc-page.xxx.workers.dev),
+// 用于把页脚的模块订阅链接渲染成当前部署自己的绝对地址。
+export function getPageHtml(origin = "") {
+  const moduleLinks = MODULE_LINKS.map((m) => ({ name: m.name, url: origin + m.path }));
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -492,7 +495,7 @@ queryActive();
   <div class="card">
     <h2 id="module-links-title" style="font-size:16px;margin-bottom:8px">模块订阅地址</h2>
     <p style="font-size:13px;color:var(--gray);margin-bottom:12px">长按对应地址复制，在代理客户端中添加模块订阅。Stash 使用原生覆写。</p>
-    ${MODULE_LINKS.map(({ name, url }) => `<div style="margin-top:12px">
+    ${moduleLinks.map(({ name, url }) => `<div style="margin-top:12px">
       <h3>${name}</h3>
       <a href="${url}" target="_blank" rel="noopener noreferrer" style="display:block;overflow-wrap:anywhere;font-size:13px;line-height:1.6">${url}</a>
     </div>`).join('')}

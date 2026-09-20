@@ -13,23 +13,29 @@ app.use("*", async (c, next) => {
 });
 
 app.get("/", (c) => {
-  return c.html(getPageHtml());
+  return c.html(getPageHtml(new URL(c.req.url).origin));
 });
 
 // 代理客户端拉取的两个 WLOC 脚本 + 五种模块订阅。
 // 内容来自 src/assets.generated.js (由 scripts/configure.mjs 生成)。
+// 模块里的 {{SITE}} 在响应时替换为当前请求的 origin —— 一键部署后零配置即可用。
 app.get("/wloc.js", (c) => serveAsset(c, "/wloc.js"));
 app.get("/wloc-settings.js", (c) => serveAsset(c, "/wloc-settings.js"));
 app.get("/modules/:name", (c) => {
   const name = c.req.param("name");
   const route = `/modules/${name}`;
   // 只放行 configure 生成过的文件名, 其余一律 404。
-  return SERVED_ASSETS[route] ? serveAsset(c, route) : c.notFound();
+  return SERVED_ASSETS[route] ? serveAsset(c, route, new URL(c.req.url).origin) : c.notFound();
 });
 
-function serveAsset(c, route) {
+function serveAsset(c, route, origin) {
   const asset = SERVED_ASSETS[route];
-  return c.body(asset.content, 200, { "Content-Type": asset.type });
+  const content = origin ? asset.content.replaceAll("{{SITE}}", origin) : asset.content;
+  if (content.includes("{{SITE}}")) {
+    // 模板占位符必须被替换干净; 出现残留说明模板新增了未覆盖的用法
+    return c.body("module template contains unreplaced placeholder", 500, { "Content-Type": "text/plain; charset=utf-8" });
+  }
+  return c.body(content, 200, { "Content-Type": asset.type });
 }
 
 // 地图链接解析: 供快捷指令调用。

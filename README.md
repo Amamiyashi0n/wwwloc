@@ -1,6 +1,11 @@
 # wloc-page — WLOC 单页(选点网页 · 解析 API · 代理脚本 · 模块订阅,单 Worker 全托管)
 
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Amamiyashi0n/wwwloc)
+
 一个把 **选点网页、地图链接解析 API、两个 WLOC 代理脚本、五种客户端模块** 全部收进单个 Cloudflare Worker 的自包含发行版。部署之后不再依赖 GitHub Raw 或任何第三方托管 —— 代理客户端的 `script-path` 直接指向你自己的 `*.workers.dev` 域名。
+
+> [!TIP]
+> **一键部署**:点击上方按钮,登录 Cloudflare 并授权 GitHub,即可把这个仓库直接部署成你的 Worker。部署完成后模块订阅地址会**自动指向你的 workers.dev 域名**(Worker 在响应时按请求域名动态生成,零配置)。手机上打开部署后的站点,页面底部就是属于你的五种模块订阅地址。
 
 基于 [xepes0/wloc](https://github.com/xepes0/wloc)([Yu9191/wloc](https://github.com/Yu9191/wloc) 的社区恢复版)整理,沿用其 AGPL-3.0 许可证;来源与完整性记录见 [NOTICE.md](NOTICE.md)。
 
@@ -41,7 +46,9 @@ flowchart LR
 
 ## 快速部署
 
-前置:Node.js ≥ 22,一个 Cloudflare 账号。
+**方式 A:一键部署(推荐)** —— 点 README 顶部的「Deploy to Cloudflare」按钮,授权后即完成部署。模块与页面里的站点地址由 Worker 在响应时动态生成,部署完即可直接使用,无需任何配置。
+
+**方式 B:本地部署**(需要 Node.js ≥ 22 和一个 Cloudflare 账号;想自定义 Worker 名称或把订阅表生成到 README 时用这种):
 
 ```sh
 npm ci
@@ -82,7 +89,7 @@ npm run deploy
 | Stash | [https://REPLACE-ME.workers.dev/modules/wloc.stoverride](https://REPLACE-ME.workers.dev/modules/wloc.stoverride) |
 | Shadowrocket | [https://REPLACE-ME.workers.dev/modules/wloc.module](https://REPLACE-ME.workers.dev/modules/wloc.module) |
 
-选点页面：[https://REPLACE-ME.workers.dev/](https://REPLACE-ME.workers.dev/) 。
+选点页面:[https://REPLACE-ME.workers.dev/](https://REPLACE-ME.workers.dev/) 。
 
 [浏览源码](https://REPLACE-ME.workers.dev/)
 <!-- subscriptions:end -->

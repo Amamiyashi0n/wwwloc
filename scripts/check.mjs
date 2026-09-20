@@ -13,9 +13,10 @@ import { generatedFiles } from './configure.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const errors = [];
 
-// 1. 生成结果与磁盘一致
+// 1. 生成结果与磁盘一致 (@template/* 是仅供 assets 生成的内存条目, 不落盘)
 const { config, files } = await generatedFiles();
 for (const [name, expected] of files) {
+  if (name.startsWith('@template/')) continue;
   const actual = await readFile(path.join(root, name), 'utf8').catch(() => '');
   if (actual.replaceAll('\r\n', '\n') !== expected) {
     errors.push(`${name} 与配置不一致，请运行 npm run configure`);

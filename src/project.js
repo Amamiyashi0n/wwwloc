@@ -4,22 +4,22 @@ export const SITE_BASE = "https://REPLACE-ME.workers.dev";
 export const MODULE_LINKS = [
   {
     "name": "Surge / Egern",
-    "url": "https://REPLACE-ME.workers.dev/modules/wloc.sgmodule"
+    "path": "/modules/wloc.sgmodule"
   },
   {
     "name": "Quantumult X",
-    "url": "https://REPLACE-ME.workers.dev/modules/wloc.conf"
+    "path": "/modules/wloc.conf"
   },
   {
     "name": "Loon",
-    "url": "https://REPLACE-ME.workers.dev/modules/wloc.lpx"
+    "path": "/modules/wloc.lpx"
   },
   {
     "name": "Stash",
-    "url": "https://REPLACE-ME.workers.dev/modules/wloc.stoverride"
+    "path": "/modules/wloc.stoverride"
   },
   {
     "name": "Shadowrocket",
-    "url": "https://REPLACE-ME.workers.dev/modules/wloc.module"
+    "path": "/modules/wloc.module"
   }
 ];
