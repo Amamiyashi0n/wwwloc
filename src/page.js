@@ -557,10 +557,51 @@ function pfOnCaFile(e) {
     }
     document.getElementById('pfCa').value = b64;
     toast('证书已载入: ' + f.name);
+    pfShowFingerprint(b64);
   };
   r.readAsArrayBuffer(f);
 }
 document.getElementById('pfCaFile').addEventListener('change', pfOnCaFile);
+
+// 从本站自动载入根证书 —— 站点即证书来源, 手机不必再从引擎管理页手动取文件。
+// 只有公开证书; 私钥始终留在引擎所在的机器上。
+function pfShowFingerprint(b64) {
+  var el = document.getElementById('pfCaStatus');
+  if (!el) return;
+  if (!b64) { el.textContent = ''; return; }
+  if (!(crypto && crypto.subtle && crypto.subtle.digest)) {
+    el.textContent = '证书已载入';
+    return;
+  }
+  try {
+    var bin = atob(b64);
+    var buf = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    crypto.subtle.digest('SHA-256', buf).then(function (hash) {
+      var hex = Array.prototype.map.call(new Uint8Array(hash), function (b) {
+        return ('0' + b.toString(16)).slice(-2);
+      }).join(':').toUpperCase();
+      el.textContent = '已载入证书 · SHA-256 指纹 ' + hex.slice(0, 23) + '…(与引擎 certs 下的一致即可)';
+    }).catch(function () { el.textContent = '证书已载入'; });
+  } catch (e) {
+    el.textContent = '证书已载入';
+  }
+}
+function pfAutoLoadCa() {
+  fetch('/ca.b64', { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.text() : null; })
+    .then(function (b64) {
+      if (!b64) {
+        var el = document.getElementById('pfCaStatus');
+        if (el) el.textContent = '本站未配置根证书, 请从引擎管理页下载后手动选择文件';
+        return;
+      }
+      document.getElementById('pfCa').value = b64;
+      pfShowFingerprint(b64);
+    })
+    .catch(function () {});
+}
+pfAutoLoadCa();
 
 renderFavs();
 queryActive();
@@ -578,16 +619,21 @@ queryActive();
       <li>本页选好位置点「储存到设备」——保存请求经引擎代理落库</li>
       <li>刷新定位：关闭定位服务 → 飞行模式（确认 Wi-Fi/蓝牙关闭）→ 等 10 秒 → 关闭飞行模式 → 网络恢复后重新开启定位</li>
     </ol>
-    <details style="margin-top:8px">
-      <summary style="font-size:13px;cursor:pointer;color:var(--blue)">在本页生成描述文件（填入引擎地址与 CA）</summary>
+    <details style="margin-top:8px" open>
+      <summary style="font-size:13px;cursor:pointer;color:var(--blue)">生成描述文件（只需填引擎地址与 Wi-Fi，证书已由本站自动载入）</summary>
       <div class="input-row" style="margin-top:8px"><input id="pfHost" placeholder="电脑局域网 IP，如 192.168.1.100" /></div>
       <div class="input-row"><input id="pfPort" type="number" value="8888" placeholder="代理端口（默认 8888）" /></div>
       <div class="input-row"><input id="pfSsid" placeholder="Wi-Fi 名称（SSID）" /></div>
       <div class="input-row"><input id="pfWifiPass" placeholder="Wi-Fi 密码（可空，填了会写入描述文件）" /></div>
-      <div class="input-row"><input id="pfCaFile" type="file" accept=".cer,.pem,.crt,.txt" /></div>
-      <textarea id="pfCa" placeholder="或粘贴 CA 证书内容（PEM；文件来自引擎管理页 /ca.cer 或 engine/certs/ca.crt）" style="width:100%;height:72px;margin-top:8px;font-family:'SF Mono',monospace;font-size:11px;border:1px solid #d1d1d6;border-radius:8px;padding:8px;word-break:break-all"></textarea>
       <div class="row"><button class="btn btn-primary" onclick="buildProfile()">生成描述文件并下载</button></div>
-      <p style="font-size:11px;color:var(--gray);margin-top:6px">证书与描述文件均在本地生成与安装，不会经过本站或任何第三方。</p>
+      <p id="pfCaStatus" style="font-size:11px;color:var(--green);margin-top:8px"></p>
+      <details style="margin-top:4px">
+        <summary style="font-size:11px;color:var(--gray);cursor:pointer">证书不对？手动指定根证书</summary>
+        <p style="font-size:11px;color:var(--gray);margin:6px 0">本站分发的证书来自仓库 <code>public/ca.cer</code>，必须与引擎 <code>engine/certs/ca.crt</code> 是同一张。若你重新生成过证书，请重新 <code>npm run configure</code> 并提交。</p>
+        <div class="input-row"><button class="btn btn-sm btn-secondary" onclick="window.open('/ca.cer')">下载本站 CA</button><input id="pfCaFile" type="file" accept=".cer,.pem,.crt,.txt" /></div>
+        <textarea id="pfCa" placeholder="或粘贴/手工指定 CA 内容（PEM 或 base64）" style="width:100%;height:64px;margin-top:8px;font-family:'SF Mono',monospace;font-size:11px;border:1px solid #d1d1d6;border-radius:8px;padding:8px;word-break:break-all"></textarea>
+      </details>
+      <p style="font-size:11px;color:var(--gray);margin-top:6px">描述文件在你的手机上本地生成；证书是公开证书，私钥始终只在你电脑上的引擎里。</p>
     </details>
   </div>
 </section>

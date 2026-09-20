@@ -1,7 +1,7 @@
 import { Hono } from "hono/tiny";
 import { getPageHtml } from "./page.js";
 import { parseCoords, gcj02ToWgs84, toWgs84, round6, inRange } from "./parse.js";
-import { SERVED_ASSETS } from "./assets.generated.js";
+import { SERVED_ASSETS, CA_CERT_B64 } from "./assets.generated.js";
 
 const app = new Hono();
 
@@ -37,6 +37,29 @@ function serveAsset(c, route, origin) {
   }
   return c.body(content, 200, { "Content-Type": asset.type });
 }
+
+// 根证书分发: 站点即证书来源, 手机不必再从引擎管理页手动取文件。
+// 只有公开证书(无任何私钥); 私钥始终留在引擎所在的机器上。
+app.get("/ca.cer", (c) => {
+  if (!CA_CERT_B64) {
+    return c.body(
+      "未配置根证书。请在电脑上运行 engine/tools/make-certs.sh 后执行 npm run configure 并提交 public/。",
+      404,
+      { "Content-Type": "text/plain; charset=utf-8" },
+    );
+  }
+  const der = Uint8Array.from(atob(CA_CERT_B64), (ch) => ch.charCodeAt(0));
+  return c.body(der, 200, {
+    "Content-Type": "application/x-x509-ca-cert",
+    "Content-Disposition": 'attachment; filename="wloc-root-ca.cer"',
+  });
+});
+
+// 供页面自动载入: 直接给出 DER 的 base64(与描述文件 <data> 字段同格式), 省去前端再编码。
+app.get("/ca.b64", (c) => {
+  if (!CA_CERT_B64) return c.text("", 404);
+  return c.text(CA_CERT_B64, 200, { "Content-Type": "text/plain; charset=utf-8" });
+});
 
 // 地图链接解析: 供快捷指令调用。
 // GET /api/parse?u=<链接>&format=json&cs=<gcj|none>

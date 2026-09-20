@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import app from '../src/index.js';
 import { SOURCE_URL } from '../src/project.js';
-import { SERVED_ASSETS } from '../src/assets.generated.js';
+import { SERVED_ASSETS, CA_CERT_B64 } from '../src/assets.generated.js';
 
 test('首页包含源码入口、免客户端模式卡片,且内联脚本可解析', async () => {
   const response = await app.request('/');
@@ -72,4 +72,29 @@ test('API 空输入错误不能被缓存', async () => {
 
 test('未知路由返回 404', async () => {
   assert.equal((await app.request('/does-not-exist')).status, 404);
+});
+
+test('站点分发根证书: /ca.cer 为 DER, /ca.b64 为同一份内容的 base64', async () => {
+  const cer = await app.request('/ca.cer');
+  assert.equal(cer.status, 200);
+  assert.equal(cer.headers.get('content-type'), 'application/x-x509-ca-cert');
+  assert.match(cer.headers.get('content-disposition') ?? '', /attachment/);
+  const der = Buffer.from(await cer.arrayBuffer());
+  assert.equal(der[0], 0x30, '应为 DER 序列');
+
+  const b64 = await app.request('/ca.b64');
+  assert.equal(b64.status, 200);
+  const text = (await b64.text()).trim();
+  // 两个路由必须指向同一张证书, 否则页面载入的与下载的不是一张
+  assert.ok(Buffer.from(text, 'base64').equals(der), '/ca.b64 与 /ca.cer 应为同一张证书');
+  assert.equal(text, CA_CERT_B64, '应等于 configure 内嵌的证书');
+});
+
+test('页面自动载入本站证书并提供指纹与手动兜底', async () => {
+  const html = await (await app.request('/')).text();
+  assert.ok(html.includes('pfAutoLoadCa'), '应含自动载入逻辑');
+  assert.ok(html.includes("fetch('/ca.b64'"), '应从本站取证书');
+  assert.ok(html.includes('SHA-256 指纹'), '应显示指纹便于核对');
+  assert.ok(html.includes('手动指定根证书'), '应保留手动兜底入口');
+  assert.ok(html.includes('public/ca.cer'), '应说明证书来源');
 });
