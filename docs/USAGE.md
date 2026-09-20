@@ -1,6 +1,6 @@
 # WLOC 使用指南(免客户端模式)
 
-> **本站点**:https://REPLACE-ME.workers.dev/
+> **本站点**:https://wwwloc-page.amamiyashion.workers.dev/
 >
 > 需要准备:一台 iPhone/iPad、一台电脑(和手机同一 Wi-Fi)、一个 Cloudflare Worker 站点(上面这个地址)。
 
@@ -48,7 +48,7 @@ npm start
 
 ## 2. 手机安装描述文件
 
-1. 手机连上那个 Wi-Fi,用 **Safari** 打开 **https://REPLACE-ME.workers.dev/**
+1. 手机连上那个 Wi-Fi,用 **Safari** 打开 **https://wwwloc-page.amamiyashion.workers.dev/**
 2. 页面底部「免客户端模式」卡片里,展开「在本页生成描述文件」
 3. 填入:电脑局域网 IP、端口(默认 8888)、Wi-Fi 名称、Wi-Fi 密码(可空)
 4. 点「载入 CA 证书」,选择从引擎管理页下载的 `ca.cer`(或 `engine/certs/ca.crt`)
@@ -68,7 +68,7 @@ npm start
 
 ## 3. 选点并写入
 
-1. 在 **https://REPLACE-ME.workers.dev/** 上选位置:点地图、搜地名、粘贴地图链接(Apple/Google/高德/百度均可)、或直接输经纬度
+1. 在 **https://wwwloc-page.amamiyashion.workers.dev/** 上选位置:点地图、搜地名、粘贴地图链接(Apple/Google/高德/百度均可)、或直接输经纬度
 2. 需要的话填「扰动半径(米)」——每次定位在目标点周围随机偏移,0 表示关闭
 3. 点 **储存到设备**
 

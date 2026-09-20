@@ -1,7 +1,7 @@
 name: Apple WLOC 定位修改 (Cloudflare)
-desc: "Apple 网络定位修改 | 脚本与选点页面均由同一 Cloudflare Worker 提供: https://REPLACE-ME.workers.dev"
+desc: "Apple 网络定位修改 | 脚本与选点页面均由同一 Cloudflare Worker 提供: https://wwwloc-page.amamiyashion.workers.dev"
 author: Yu9191 Rewrite (Cloudflare bundle)
-homepage: "https://REPLACE-ME.workers.dev/"
+homepage: "https://wwwloc-page.amamiyashion.workers.dev/"
 category: Tools
 
 http:
@@ -28,8 +28,8 @@ http:
 
 script-providers:
   WLOC.Location:
-    url: "https://REPLACE-ME.workers.dev/wloc.js"
+    url: "https://wwwloc-page.amamiyashion.workers.dev/wloc.js"
     interval: 86400
   WLOC.Settings:
-    url: "https://REPLACE-ME.workers.dev/wloc-settings.js"
+    url: "https://wwwloc-page.amamiyashion.workers.dev/wloc-settings.js"
     interval: 86400
