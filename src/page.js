@@ -1,10 +1,9 @@
 import { GCJ_BROWSER_JS } from "./gcj-browser.js";
-import { SOURCE_URL, MODULE_LINKS } from "./project.js";
+import { SOURCE_URL } from "./project.js";
 
 // origin: 当前请求的站点根地址(如 https://wloc-page.xxx.workers.dev),
-// 用于把页脚的模块订阅链接渲染成当前部署自己的绝对地址。
+// 用于把页脚里的引擎仓库链接渲染成绝对地址。
 export function getPageHtml(origin = "") {
-  const moduleLinks = MODULE_LINKS.map((m) => ({ name: m.name, url: origin + m.path }));
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -92,12 +91,12 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
 </div>
 <div class="panel">
   <div class="error-banner" id="errorBanner">
-    <b>模块未生效</b>
+    <b>定位修改未生效</b>
     请检查以下配置：<br>
-    1. 已安装并启用 WLOC 定位模块<br>
-    2. MITM 已开启且信任证书<br>
-    3. MITM 主机名包含 gs-loc.apple.com<br>
-    4. 当前网络已走代理
+    1. 免客户端模式：电脑引擎已运行，手机已装描述文件且 Wi-Fi 代理生效<br>
+    2. 模块模式：已安装并启用 WLOC 模块<br>
+    3. CA 证书已在「证书信任设置」完全信任<br>
+    4. 代理覆盖 gs-loc.apple.com
   </div>
   <div class="card">
     <h3>选择目标位置</h3>
@@ -490,19 +489,110 @@ document.getElementById('favNameInput').addEventListener('keydown', e => { if(e.
 
 renderFavs();
 queryActive();
+
+/* ---- 免客户端模式: 描述文件生成(全部在本地完成, 不上传) ---- */
+function pfUuid() {
+  return (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){ var r = Math.random()*16|0; return (c === 'x' ? r : (r&0x3|0x8)).toString(16); })).toUpperCase();
+}
+function pfEsc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function buildProfile() {
+  var host = document.getElementById('pfHost').value.trim();
+  var port = parseInt(document.getElementById('pfPort').value, 10) || 8888;
+  var ssid = document.getElementById('pfSsid').value.trim();
+  var wifiPass = document.getElementById('pfWifiPass').value;
+  var ca = document.getElementById('pfCa').value.replace(/-----[^-]+-----/g, '').replace(/\\s+/g, '');
+  if (!host || !ssid || !ca) { toast('请先填写代理地址、Wi-Fi 名称，并载入 CA 证书'); return; }
+  try { atob(ca); } catch (e) { toast('CA 证书内容不是有效的 base64/PEM'); return; }
+  var NL = String.fromCharCode(10);
+  var xml = '<?xml version="1.0" encoding="UTF-8"?>' + NL +
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' + NL +
+    '<plist version="1.0">' + NL + '<dict>' + NL + '<key>PayloadContent</key>' + NL + '<array>' + NL +
+    '<dict>' + NL + '<key>PayloadType</key><string>com.apple.security.root</string>' + NL +
+    '<key>PayloadVersion</key><integer>1</integer>' + NL +
+    '<key>PayloadIdentifier</key><string>com.selfhost.wloc.rootca</string>' + NL +
+    '<key>PayloadUUID</key><string>' + pfUuid() + '</string>' + NL +
+    '<key>PayloadDisplayName</key><string>WLOC Selfhost Root CA (Testing)</string>' + NL +
+    '<key>PayloadDescription</key><string>Only install on your own authorized test device.</string>' + NL +
+    '<key>PayloadContent</key><data>' + ca + '</data>' + NL + '</dict>' + NL +
+    '<dict>' + NL + '<key>PayloadType</key><string>com.apple.wifi.managed</string>' + NL +
+    '<key>PayloadVersion</key><integer>1</integer>' + NL +
+    '<key>PayloadIdentifier</key><string>com.selfhost.wloc.wifi</string>' + NL +
+    '<key>PayloadUUID</key><string>' + pfUuid() + '</string>' + NL +
+    '<key>PayloadDisplayName</key><string>WLOC Wi-Fi (' + pfEsc(ssid) + ')</string>' + NL +
+    '<key>HIDDEN_NETWORK</key><false/>' + NL + '<key>AutoJoin</key><true/>' + NL +
+    '<key>SSID_STR</key><string>' + pfEsc(ssid) + '</string>' + NL +
+    (wifiPass ? '<key>Password</key><string>' + pfEsc(wifiPass) + '</string>' + NL : '') +
+    '<key>ProxyType</key><string>Manual</string>' + NL +
+    '<key>ProxyServer</key><string>' + pfEsc(host) + '</string>' + NL +
+    '<key>ProxyPort</key><integer>' + port + '</integer>' + NL + '</dict>' + NL +
+    '</array>' + NL + '<key>PayloadDisplayName</key><string>WLOC Selfhost (Testing)</string>' + NL +
+    '<key>PayloadIdentifier</key><string>com.selfhost.wloc</string>' + NL +
+    '<key>PayloadOrganization</key><string>selfhost-wloc</string>' + NL +
+    '<key>PayloadRemovalDisallowed</key><false/>' + NL +
+    '<key>PayloadScope</key><string>System</string>' + NL +
+    '<key>PayloadType</key><string>Configuration</string>' + NL +
+    '<key>PayloadUUID</key><string>' + pfUuid() + '</string>' + NL +
+    '<key>PayloadVersion</key><integer>1</integer>' + NL + '</dict>' + NL + '</plist>' + NL;
+  var blob = new Blob([xml], { type: 'application/x-apple-aspen-config' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'wloc.mobileconfig';
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('描述文件已生成，请在 Safari 下载记录中安装');
+}
+function pfOnCaFile(e) {
+  var f = e.target.files[0]; if (!f) return;
+  var r = new FileReader();
+  r.onload = function() {
+    var bytes = new Uint8Array(r.result);
+    var text = '';
+    for (var i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
+    var b64;
+    if (text.indexOf('-----BEGIN') >= 0) {
+      b64 = text.replace(/-----[^-]+-----/g, '').replace(/\\s+/g, '');
+    } else {
+      b64 = btoa(text);
+    }
+    document.getElementById('pfCa').value = b64;
+    toast('证书已载入: ' + f.name);
+  };
+  r.readAsArrayBuffer(f);
+}
+document.getElementById('pfCaFile').addEventListener('change', pfOnCaFile);
+
+renderFavs();
+queryActive();
 <\/script>
-<section class="panel" aria-labelledby="module-links-title">
+<section class="panel" aria-labelledby="cert-mode-title">
   <div class="card">
-    <h2 id="module-links-title" style="font-size:16px;margin-bottom:8px">模块订阅地址</h2>
-    <p style="font-size:13px;color:var(--gray);margin-bottom:12px">长按对应地址复制，在代理客户端中添加模块订阅。Stash 使用原生覆写。</p>
-    ${moduleLinks.map(({ name, url }) => `<div style="margin-top:12px">
-      <h3>${name}</h3>
-      <a href="${url}" target="_blank" rel="noopener noreferrer" style="display:block;overflow-wrap:anywhere;font-size:13px;line-height:1.6">${url}</a>
-    </div>`).join('')}
+    <h2 id="cert-mode-title" style="font-size:16px;margin-bottom:8px">免客户端模式：证书 + 描述文件（不装任何代理 App）</h2>
+    <p style="font-size:13px;color:var(--gray);line-height:1.6">
+      改写引擎由<a href="${SOURCE_URL}" target="_blank" rel="noopener noreferrer">本仓库 engine/ 目录</a>提供，跑在你自己的电脑上（Node ≥ 18，无需 iOS 开发者账号）；
+      手机只装一份描述文件。引擎与手机须在同一 Wi-Fi。
+    </p>
+    <ol style="font-size:13px;color:#333;line-height:1.9;padding-left:18px">
+      <li>电脑上运行引擎：<code>cd engine && bash tools/make-certs.sh && npm start</code>（首次先 <code>cp config.example.json config.json</code>，填电脑局域网 IP 与 Wi-Fi 名）</li>
+      <li>手机 Safari 打开本页，在下方生成并安装描述文件；再到 设置→通用→关于本机→<b>证书信任设置</b> 开启<b>完全信任</b>（必做）</li>
+      <li>本页选好位置点「储存到设备」——保存请求经引擎代理落库</li>
+      <li>刷新定位：关闭定位服务 → 飞行模式（确认 Wi-Fi/蓝牙关闭）→ 等 10 秒 → 关闭飞行模式 → 网络恢复后重新开启定位</li>
+    </ol>
+    <details style="margin-top:8px">
+      <summary style="font-size:13px;cursor:pointer;color:var(--blue)">在本页生成描述文件（填入引擎地址与 CA）</summary>
+      <div class="input-row" style="margin-top:8px"><input id="pfHost" placeholder="电脑局域网 IP，如 192.168.1.100" /></div>
+      <div class="input-row"><input id="pfPort" type="number" value="8888" placeholder="代理端口（默认 8888）" /></div>
+      <div class="input-row"><input id="pfSsid" placeholder="Wi-Fi 名称（SSID）" /></div>
+      <div class="input-row"><input id="pfWifiPass" placeholder="Wi-Fi 密码（可空，填了会写入描述文件）" /></div>
+      <div class="input-row"><input id="pfCaFile" type="file" accept=".cer,.pem,.crt,.txt" /></div>
+      <textarea id="pfCa" placeholder="或粘贴 CA 证书内容（PEM；文件来自引擎管理页 /ca.cer 或 engine/certs/ca.crt）" style="width:100%;height:72px;margin-top:8px;font-family:'SF Mono',monospace;font-size:11px;border:1px solid #d1d1d6;border-radius:8px;padding:8px;word-break:break-all"></textarea>
+      <div class="row"><button class="btn btn-primary" onclick="buildProfile()">生成描述文件并下载</button></div>
+      <p style="font-size:11px;color:var(--gray);margin-top:6px">证书与描述文件均在本地生成与安装，不会经过本站或任何第三方。</p>
+    </details>
   </div>
 </section>
 <footer style="padding:16px;text-align:center;font-size:13px;color:#666">
-  WLOC Cloudflare 全托管版 · 脚本与模块均由本站提供 · <a href="${SOURCE_URL}" target="_blank" rel="noopener noreferrer">源码与许可证</a>
+  WLOC 单页 · 免客户端证书模式 · <a href="${SOURCE_URL}" target="_blank" rel="noopener noreferrer">源码与许可证</a>
 </footer>
 </body>
 </html>`;

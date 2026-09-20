@@ -2,3 +2,7 @@ node_modules/
 build/
 .wrangler/
 .dev.vars
+engine/certs/
+engine/config.json
+engine/state.json
+engine/node_modules/

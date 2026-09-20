@@ -1,0 +1,12 @@
+{
+  "proxyPort": 8888,
+  "adminPort": 8080,
+  "adminHost": "127.0.0.1",
+  "serverHost": "192.168.1.100",
+  "ssids": [
+    { "ssid": "你的Wi-Fi名", "password": "可选:填了才会写进描述文件,不填则手机连网时会提示输入" }
+  ],
+  "certsDir": "./certs",
+  "stateFile": "./state.json",
+  "profileIdentifier": "com.selfhost.wloc.test"
+}

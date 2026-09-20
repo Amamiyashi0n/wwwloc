@@ -2,20 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import app from '../src/index.js';
-import { SOURCE_URL, MODULE_LINKS } from '../src/project.js';
+import { SOURCE_URL } from '../src/project.js';
 import { SERVED_ASSETS } from '../src/assets.generated.js';
 
-test('首页包含源码入口且内联脚本可解析', async () => {
+test('首页包含源码入口、免客户端模式卡片,且内联脚本可解析', async () => {
   const response = await app.request('/');
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.ok(html.includes(`href="${SOURCE_URL}"`));
-  assert.equal(MODULE_LINKS.length, 5);
-  // app.request 的默认 origin 是 http://localhost —— 页脚订阅链接应基于它渲染
-  for (const { path } of MODULE_LINKS) {
-    assert.ok(html.includes(`href="http://localhost${path}"`));
-    assert.ok(html.includes(`>http://localhost${path}</a>`), '模块地址应以完整 URL 显示');
-  }
+  // 免客户端模式: 描述文件生成器必须在页面上
+  assert.ok(html.includes('免客户端模式'), '应有免客户端模式卡片');
+  assert.ok(html.includes('buildProfile'), '应包含描述文件生成函数');
+  assert.ok(html.includes('wloc.mobileconfig'), '应生成 .mobileconfig 下载');
+  assert.ok(!html.includes('模块订阅地址'), '模块订阅卡片应已从页面移除');
   const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(x => x[1]).filter(x => x.trim());
   assert.ok(scripts.length > 0);
   for (const script of scripts) new vm.Script(script);

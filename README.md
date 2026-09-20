@@ -9,6 +9,18 @@
 
 基于 [xepes0/wloc](https://github.com/xepes0/wloc)([Yu9191/wloc](https://github.com/Yu9191/wloc) 的社区恢复版)整理,沿用其 AGPL-3.0 许可证;来源与完整性记录见 [NOTICE.md](NOTICE.md)。
 
+## 免客户端模式(不装任何代理 App)
+
+页面默认展示的是**免客户端模式**:手机只装一份描述文件,不装 Surge/Shadowrocket 之类的 IPA。改写引擎是本仓库的 [`engine/`](engine/README.md) 目录——跑在你自己的电脑上(Node ≥ 18,零依赖),对定位域名做 MITM:
+
+1. 电脑:`cd engine && bash tools/make-certs.sh && cp config.example.json config.json`(填电脑局域网 IP 与 Wi-Fi 名)`&& npm start`
+2. 部署后的选点页 →「免客户端模式」卡片 → 填引擎地址与 Wi-Fi 信息、载入 CA(引擎管理页 `/ca.cer`)→ 生成并安装描述文件
+3. 在「证书信任设置」完全信任 → 本页选点「储存到设备」→ 按页面提示刷新定位
+
+限制与红线:仅 Wi-Fi 生效(蜂窝不走该代理);iOS 27 正式版不支持;CA 私钥与描述文件**只给自己用**;引擎 8888 端口不要暴露公网;**iOS locationd 是否遵循 Wi-Fi 手动代理未经真机验证**——装好后看引擎日志是否出现 `MITM gs-loc`,若无请求说明此路不通。详见 [engine/README.md](engine/README.md)。
+
+代理客户端模块(Surge/QX/Loon/Stash/Shadowrocket)路线仍然保留:Worker 的 `/modules/*` 与脚本路由继续可用,订阅地址见下方表格。
+
 > [!IMPORTANT]
 > ## ⚠️ 适用范围
 >
