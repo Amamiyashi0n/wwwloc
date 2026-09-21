@@ -1,7 +1,7 @@
 import { Hono } from "hono/tiny";
 import { getPageHtml } from "./page.js";
 import { parseCoords, gcj02ToWgs84, toWgs84, round6, inRange } from "./parse.js";
-import { SERVED_ASSETS, CA_CERT_B64, ENGINE_HOST, ENGINE_PORT } from "./assets.generated.js";
+import { SERVED_ASSETS, CA_CERT_B64, ICON_B64, ENGINE_HOST, ENGINE_PORT } from "./assets.generated.js";
 
 const app = new Hono();
 
@@ -59,6 +59,13 @@ app.get("/ca.cer", (c) => {
 app.get("/ca.b64", (c) => {
   if (!CA_CERT_B64) return c.text("", 404);
   return c.text(CA_CERT_B64, 200, { "Content-Type": "text/plain; charset=utf-8" });
+});
+
+// 模块图标: 上游原文把它指向 GitHub Raw, 这里自托管 —— 模块运行时不再依赖外部托管。
+app.get("/wloc.jpg", (c) => {
+  if (!ICON_B64) return c.notFound();
+  const bytes = Uint8Array.from(atob(ICON_B64), (ch) => ch.charCodeAt(0));
+  return c.body(bytes, 200, { "Content-Type": "image/jpeg" });
 });
 
 // ---- PAC: 只把三个定位域名导向你电脑的引擎, 其余一律直连 ----

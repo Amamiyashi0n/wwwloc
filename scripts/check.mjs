@@ -48,8 +48,10 @@ for (const name of await readdir(path.join(root, 'modules'))) {
   for (const target of ['/clls/wloc', '/wloc-settings/save', '/wloc.js', '/wloc-settings.js']) {
     if (!flat.includes(target)) errors.push(`modules/${name} 缺少 ${target}`);
   }
-  if (/raw\.githubusercontent\.com|pages\.dev|xepes0|Yu9191\/wloc/.test(content)) {
-    errors.push(`modules/${name} 仍引用旧上游地址`);
+  // 运行时必须自托管: 脚本与图标都不能再从上游取。
+  // 允许 github.com/... 的署名链接(desc/homepage) —— 那不是运行时依赖。
+  if (/raw\.githubusercontent\.com|\.pages\.dev/.test(content)) {
+    errors.push(`modules/${name} 仍在运行时引用上游托管(GitHub Raw / Pages)`);
   }
 }
 

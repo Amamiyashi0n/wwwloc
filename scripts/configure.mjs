@@ -79,6 +79,14 @@ export async function generatedFiles() {
     caB64 = null;
   }
 
+  // 模块图标: 上游原文指向 GitHub Raw, 这里改为自托管, 做到运行时零外部依赖。
+  let iconB64 = null;
+  try {
+    iconB64 = (await readFile(path.join(root, 'public/wloc.jpg'))).toString('base64');
+  } catch {
+    iconB64 = null;
+  }
+
   // 引擎地址: 写进 Worker 托管的 PAC。手机只拿 PAC 网址, 不再携带 IP ——
   // 电脑 IP 变了只改 project.config.json 重新部署, 手机端零改动。
   const engineHost = String(config.engineHost ?? '').trim();
@@ -100,6 +108,8 @@ export async function generatedFiles() {
       '// 根证书 DER 的 base64(来自 public/ca.cer, 由 engine/tools/make-certs.sh 同步)。\n' +
       '// 这是公开证书, 不含私钥; 私钥始终只在引擎所在机器上。\n' +
       `export const CA_CERT_B64 = ${caB64 === null ? 'null' : JSON.stringify(caB64)};\n\n` +
+      '// 模块图标(来自 public/wloc.jpg), 让模块的 icon 字段也自托管, 不再依赖 GitHub Raw。\n' +
+      `export const ICON_B64 = ${iconB64 === null ? 'null' : JSON.stringify(iconB64)};\n\n` +
       '// 引擎在局域网里的地址(来自 project.config.json), 供 /wloc.pac 使用。\n' +
       '// 留空表示尚未配置: 此时 PAC 一律直连(不改任何东西), 页面会提示去填。\n' +
       `export const ENGINE_HOST = ${JSON.stringify(engineHost)};\n` +

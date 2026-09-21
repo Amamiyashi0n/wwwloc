@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import app from '../src/index.js';
-import { SOURCE_URL } from '../src/project.js';
+import { SOURCE_URL, SITE_BASE } from '../src/project.js';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = fileURLToPath(new URL('..', import.meta.url));
 import { SERVED_ASSETS, CA_CERT_B64 } from '../src/assets.generated.js';
 
 test('首页包含源码入口、免客户端模式卡片,且内联脚本可解析', async () => {
@@ -109,6 +114,35 @@ test('PAC 支持 ?h=&p= 覆盖, 且拒绝会把内容注入脚本的值', async 
   }
   const badPort = await (await app.request('/wloc.pac?h=my-pc.lan&p=99999')).text();
   assert.ok(!badPort.includes(':99999'), '非法端口应被忽略');
+});
+
+test('模块自托管: 与上游原文的差异只有运行时地址(脚本/图标)', async () => {
+  const RAW_PREFIX = 'https://raw.githubusercontent.com/xepes0/wloc/refs/heads/main';
+  const names = ['wloc.sgmodule', 'wloc.conf', 'wloc.lpx', 'wloc.stoverride', 'wloc.module'];
+  const site = SITE_BASE;
+  for (const name of names) {
+    const upstream = (await readFile(path.join(root, 'upstream/modules', name), 'utf8')).replaceAll('\r\n', '\n');
+    const ours = (await readFile(path.join(root, 'modules', name), 'utf8')).replaceAll('\r\n', '\n');
+    // 把上游的运行时地址换成我们的, 结果必须与我们的模块逐字节一致
+    const expected = upstream
+      .split(`${RAW_PREFIX}/dist/wloc.js`).join(`${site}/wloc.js`)
+      .split(`${RAW_PREFIX}/dist/wloc-settings.js`).join(`${site}/wloc-settings.js`)
+      .split(`${RAW_PREFIX}/wloc.jpg`).join(`${site}/wloc.jpg`);
+    assert.equal(ours, expected, `${name} 与上游的差异应仅限于运行时地址`);
+    // 反向: 不得残留任何上游托管地址
+    assert.ok(!ours.includes('raw.githubusercontent.com'), `${name} 不应残留 GitHub Raw`);
+    assert.ok(!ours.includes('.pages.dev'), `${name} 不应残留 Pages 域名`);
+  }
+});
+
+test('模块图标自托管: /wloc.jpg 返回真实 JPEG', async () => {
+  const res = await app.request('/wloc.jpg');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'image/jpeg');
+  const bytes = Buffer.from(await res.arrayBuffer());
+  assert.equal(bytes[0], 0xff, '应是 JPEG 魔数');
+  assert.equal(bytes[1], 0xd8);
+  assert.ok(bytes.length > 1000, '不应是空图');
 });
 
 test('站点分发根证书: /ca.cer 为 DER, /ca.b64 为同一份内容的 base64', async () => {

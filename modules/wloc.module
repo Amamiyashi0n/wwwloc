@@ -1,7 +1,8 @@
-#!name=Apple WLOC 定位修改 (Cloudflare)
-#!desc=Apple 网络定位修改 | 脚本与选点页面均由同一 Cloudflare Worker 提供: https://wwwloc-page.amamiyashion.workers.dev
-#!author=Yu9191 Rewrite (Cloudflare bundle)
-#!homepage=https://wwwloc-page.amamiyashion.workers.dev/
+#!name=Apple WLOC 定位修改
+#!desc=Apple 网络定位修改 | 使用说明: https://github.com/xepes0/wloc#使用方法
+#!author=Yu9191 Rewrite
+#!homepage=https://github.com/xepes0/wloc
+#!icon=https://wwwloc-page.amamiyashion.workers.dev/wloc.jpg
 #!category=Tools
 
 [Script]
