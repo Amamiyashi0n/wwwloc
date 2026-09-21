@@ -666,39 +666,40 @@ queryActive();
   <div class="card">
     <h2 id="cert-mode-title" style="font-size:16px;margin-bottom:8px">免客户端模式</h2>
     <p style="font-size:13px;color:var(--gray);line-height:1.6">
-      不装任何代理 App。手机只装一张根证书 + 一份协议；改写由<a href="${SOURCE_URL}" target="_blank" rel="noopener noreferrer">本仓库 engine/ 目录</a>的引擎在你电脑上完成（Node ≥ 18）。
+      不装任何代理 App。一份描述文件搞定两件事：<b>装根证书</b> + <b>把你这些 Wi-Fi 的代理指向电脑</b>；真正改坐标的是<a href="${SOURCE_URL}" target="_blank" rel="noopener noreferrer">本仓库 engine/ 目录</a>的引擎（跑在你电脑上，Node ≥ 18）。
     </p>
 
-    <div class="row" style="margin-top:14px">
-      <button class="btn btn-primary" onclick="installCertOnly()" style="font-size:15px;padding:14px">安装根证书</button>
+    <p style="font-size:13px;color:#333;margin:14px 0 6px"><b>填上你要用的 Wi-Fi 名称</b>（每行一个；带密码写成 <code>SSID | 密码</code>）</p>
+    <textarea id="pfSsidList" placeholder="家里WiFi&#10;公司WiFi | 密码123" style="width:100%;height:76px;font-family:'SF Mono',monospace;font-size:12px;border:1px solid #d1d1d6;border-radius:8px;padding:8px"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn btn-primary" onclick="buildProfile()" style="font-size:15px;padding:14px">生成描述文件并下载</button>
     </div>
     <p id="pfCaStatus" style="font-size:11px;color:var(--green);margin-top:8px"></p>
 
     <ol style="font-size:13px;color:#333;line-height:1.9;padding-left:18px;margin-top:10px">
-      <li>按上面的按钮下载 → <b>设置 → 通用 → VPN与设备管理 → 安装</b></li>
+      <li>下载后 → <b>设置 → 通用 → VPN与设备管理 → 安装</b></li>
       <li><b>设置 → 通用 → 关于本机 → 证书信任设置</b> → 对 <code>WLOC Root CA</code> 打开<b>完全信任</b>（必做，否则不生效）</li>
-      <li>让定位请求走电脑：<br>
-        <b>设置 → 无线局域网 → 当前 Wi-Fi 的 ⓘ → 配置代理 → 自动</b><br>
-        网址：<span id="pfPacUrl" style="font-family:'SF Mono',monospace;color:var(--blue);overflow-wrap:anywhere"></span>
-        <button class="btn btn-sm btn-secondary" onclick="pfCopyPacUrl()" style="margin-left:6px">复制</button>
-        <br><span style="color:var(--gray)">这个网址里没有 IP —— 电脑地址放在本站的 PAC 里，以后电脑换 IP 也不用动手机。</span>
-      </li>
       <li>电脑上启动引擎：<code>cd engine && npm start</code>（第一次先 <code>bash tools/make-certs.sh</code> 与 <code>cp config.example.json config.json</code>）</li>
     </ol>
     <p style="font-size:12px;color:var(--gray);line-height:1.6;margin-top:6px">
-      装完在下面选点、点「储存到设备」；然后按提示刷新一次定位。引擎终端出现 <code>[proxy] MITM gs-loc</code> 即说明链路通了。
-      <br><b>PAC 只把那三个定位域名送进电脑，其余全部直连</b> —— 引擎没开着时不会影响其它上网。
+      装完在这里选点、点「储存到设备」，再按提示刷新一次定位。引擎终端出现 <code>[proxy] MITM gs-loc</code> 即说明链路通了。
+    </p>
+    <p style="font-size:12px;color:var(--gray);line-height:1.6;margin-top:6px">
+      <b>电脑地址不用填</b>——它由本站的 PAC 提供（<span id="pfPacUrl" style="font-family:'SF Mono',monospace;overflow-wrap:anywhere"></span>），
+      只把那三个定位域名送进电脑、其余直连，所以引擎没开着也不会影响其它上网；以后电脑换地址也不用重装描述文件。
     </p>
 
     <details style="margin-top:10px">
-      <summary style="font-size:13px;cursor:pointer;color:var(--blue)">进阶：把代理写进描述文件（不用手动配，可一次写多个 Wi-Fi）</summary>
+      <summary style="font-size:13px;cursor:pointer;color:var(--blue)">换新 Wi-Fi / 不想用描述文件配代理？</summary>
       <p style="font-size:11px;color:var(--gray);margin:6px 0">
-        只填 Wi-Fi 名即可 —— 描述文件会把这些 Wi-Fi 的代理设成上面的 PAC 网址，第 3 步就不用手动做了。
-        <b>可以一次写多个 Wi-Fi（每行一个，带密码写成 <code>SSID | 密码</code>）</b>，装一次覆盖你常去的网络。
-        电脑地址不在这里填：它由站点 PAC 提供，改 <code>project.config.json</code> 的 <code>engineHost</code> 推送即可生效。
+        <b>换新 Wi-Fi：</b>把新 Wi-Fi 名字加进上面的框，重新生成装一次即可（证书重复装没有副作用）。
       </p>
-      <textarea id="pfSsidList" placeholder="Wi-Fi 名称，每行一个&#10;家里WiFi&#10;公司WiFi | 密码123" style="width:100%;height:76px;margin-top:8px;font-family:'SF Mono',monospace;font-size:12px;border:1px solid #d1d1d6;border-radius:8px;padding:8px"></textarea>
-      <div class="row"><button class="btn btn-secondary" onclick="buildProfile()">生成含代理的描述文件</button></div>
+      <p style="font-size:11px;color:var(--gray);margin:6px 0">
+        <b>只想装证书、代理自己配：</b>点下面这个只含证书的描述文件，然后在
+        <b>设置 → 无线局域网 → ⓘ → 配置代理 → 自动</b> 里填上面的 PAC 网址。
+      </p>
+      <div class="row"><button class="btn btn-sm btn-secondary" onclick="installCertOnly()">只下载根证书（不含代理设置）</button>
+        <button class="btn btn-sm btn-secondary" onclick="pfCopyPacUrl()">复制 PAC 网址</button></div>
     </details>
 
     <details style="margin-top:4px">

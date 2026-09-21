@@ -170,26 +170,23 @@ test('页面自动载入本站证书并提供指纹与手动兜底', async () =>
   assert.ok(html.includes('public/ca.cer'), '应说明证书来源');
 });
 
-test('主操作只有一个「安装根证书」按钮, 代理配置走 PAC 而非手填 IP', async () => {
+test('主操作是「证书 + Wi-Fi 代理」一份搞定; 只装证书降级为备选', async () => {
   const html = await (await app.request('/')).text();
-  // 证书卡片内只有 installCertOnly 一个主按钮; buildProfile 降级为次要按钮
   const card = html.slice(html.indexOf('cert-mode-title'));
-  assert.ok(card.includes('installCertOnly()'), '主按钮应调用只装证书的函数');
+  // 证书卡片内只有 buildProfile 一个主按钮 —— 描述文件同时含证书与 Wi-Fi 代理
   const primaryInCard = [...card.matchAll(/<button[^>]*class="[^"]*btn-primary[^"]*"[^>]*>/g)];
   assert.equal(primaryInCard.length, 1, '证书卡片内只应有一个主按钮');
-  assert.ok(primaryInCard[0][0].includes('installCertOnly'), '主按钮应就是安装证书');
-  assert.ok(/<button[^>]*class="[^"]*btn-secondary[^"]*"[^>]*onclick="buildProfile\(\)"/.test(card),
-    '含代理的描述文件应降级为次要按钮');
-
-  // 代理指引: 用"自动 + PAC 网址", 不再手填服务器/端口
-  assert.ok(card.includes('配置代理 → 自动'), '应指引用自动代理(PAC)');
-  assert.ok(card.includes('pfPacUrl'), '应显示要填的 PAC 网址');
-  assert.ok(!card.includes('配置代理 → 手动'), '不应再指引手动填 IP');
-  assert.ok(!card.includes('pfHost'), '不应再有电脑地址输入框(地址已移到 Worker 的 PAC)');
-
-  assert.ok(card.includes('进阶：把代理写进描述文件'), '自动配置代理应标为进阶');
-  // 证书卡片的 details 默认收起, 主界面只剩一个按钮
-  assert.ok(!/<details style="margin-top:10px" open>/.test(card), '进阶区应默认收起');
+  assert.ok(primaryInCard[0][0].includes('buildProfile'), '主按钮应是生成含代理的描述文件');
+  // Wi-Fi 名是主流程输入项, 必须在卡片正文里(而不是折叠区)
+  const mainBody = card.slice(0, card.indexOf('<details'));
+  assert.ok(mainBody.includes('pfSsidList'), 'Wi-Fi 名称输入框应在正文中');
+  assert.ok(mainBody.includes('生成描述文件并下载'), '主按钮文案应在正文中');
+  // 只装证书降级为备选, 且在折叠区内
+  assert.ok(card.includes('只下载根证书（不含代理设置）'), '应保留只装证书的备选');
+  assert.ok(/<details[\s\S]*installCertOnly\(\)/.test(card), '只装证书应位于折叠区');
+  // 电脑地址仍不出现(由 PAC 提供)
+  assert.ok(!card.includes('pfHost'), '不应有电脑地址输入框');
+  assert.ok(card.includes('换新 Wi-Fi'), '应说明换新 Wi-Fi 时怎么做');
 });
 
 test('「安装根证书」产出的描述文件只含根证书, 不含代理配置', async () => {
